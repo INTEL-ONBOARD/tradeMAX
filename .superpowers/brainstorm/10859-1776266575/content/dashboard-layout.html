@@ -1,0 +1,178 @@
+<h2>TradeMAX Dashboard Layout</h2>
+<p class="subtitle">3-screen flow: Intro → Auth → Dashboard. Pick the dashboard grid layout.</p>
+
+<div class="section">
+  <h3>Screen Flow</h3>
+  <div class="mockup">
+    <div class="mockup-header">App Navigation (no router — screen state in Zustand)</div>
+    <div class="mockup-body" style="display:flex;gap:16px;justify-content:center;align-items:center;padding:24px;">
+      <div style="background:rgba(90,24,154,0.2);border:2px solid #5A189A;border-radius:12px;padding:16px 24px;text-align:center;min-width:120px;">
+        <strong>Intro</strong><br><span style="font-size:12px;opacity:0.7;">Animated logo<br>Login / Register</span>
+      </div>
+      <div style="font-size:24px;opacity:0.5;">→</div>
+      <div style="background:rgba(90,24,154,0.2);border:2px solid #5A189A;border-radius:12px;padding:16px 24px;text-align:center;min-width:120px;">
+        <strong>Auth</strong><br><span style="font-size:12px;opacity:0.7;">Login / Register<br>form toggle</span>
+      </div>
+      <div style="font-size:24px;opacity:0.5;">→</div>
+      <div style="background:rgba(255,214,10,0.2);border:2px solid #FFD60A;border-radius:12px;padding:16px 24px;text-align:center;min-width:120px;">
+        <strong>Dashboard</strong><br><span style="font-size:12px;opacity:0.7;">Main command<br>center</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>Dashboard Grid — Pick a Layout</h3>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Command Center (2-column weighted)</h3>
+      <div class="mockup">
+        <div class="mockup-header">Dashboard — 1440×900</div>
+        <div class="mockup-body" style="padding:12px;">
+          <!-- Top bar -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:8px 12px;background:rgba(90,24,154,0.15);border-radius:8px;">
+            <span style="font-weight:700;color:#5A189A;">TradeMAX</span>
+            <div style="display:flex;gap:12px;align-items:center;">
+              <span style="font-size:12px;opacity:0.6;">🌙 Theme</span>
+              <span style="font-size:12px;opacity:0.6;">⚙️ Settings</span>
+              <span style="font-size:12px;opacity:0.6;">Logout</span>
+            </div>
+          </div>
+          <!-- Grid -->
+          <div style="display:grid;grid-template-columns:2fr 1fr;grid-template-rows:auto auto auto;gap:8px;font-size:11px;">
+            <!-- Left column -->
+            <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+              <strong style="color:#5A189A;">Portfolio Overview</strong><br>
+              <span style="opacity:0.6;">Total Balance • Daily PnL • Weekly PnL • Allocation</span>
+            </div>
+            <!-- Right column row 1 -->
+            <div style="background:rgba(255,214,10,0.1);border:1px solid rgba(255,214,10,0.3);border-radius:8px;padding:10px;">
+              <strong style="color:#FFD60A;">Agent Control</strong><br>
+              <span style="opacity:0.6;">ON/OFF Toggle • Symbol • Mode • Kill Switch</span>
+            </div>
+            <!-- Left column row 2 -->
+            <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+              <strong style="color:#5A189A;">Live Positions</strong><br>
+              <span style="opacity:0.6;">Open trades table — entry, mark, PnL, liquidation</span>
+            </div>
+            <!-- Right column row 2 -->
+            <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+              <strong style="color:#5A189A;">AI Decision Feed</strong><br>
+              <span style="opacity:0.6;">Latest Claude decision • Confidence • Reasoning</span>
+            </div>
+            <!-- Left column row 3 -->
+            <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+              <strong style="color:#5A189A;">Recent Trades</strong><br>
+              <span style="opacity:0.6;">Trade history — symbol, side, PnL, source, time</span>
+            </div>
+            <!-- Right column row 3 -->
+            <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+              <strong style="color:#5A189A;">Live Logs</strong><br>
+              <span style="opacity:0.6;">System events • AI logs • Risk rejections</span>
+            </div>
+          </div>
+          <!-- API Keys bar -->
+          <div style="margin-top:8px;padding:8px 12px;background:rgba(255,214,10,0.08);border:1px dashed rgba(255,214,10,0.3);border-radius:8px;font-size:11px;text-align:center;">
+            <strong>API Keys Panel</strong> — collapsible drawer at bottom
+          </div>
+        </div>
+      </div>
+      <p style="margin-top:8px;font-size:13px;">2:1 column ratio. Portfolio and positions get the wide left column. Agent control and AI feed on the right. API keys in a collapsible bottom drawer.</p>
+      <p style="margin-top:8px;padding:8px 12px;background:rgba(90,24,154,0.15);border-radius:8px;font-size:14px;">
+        <strong>⭐ Recommended</strong> — TradingView-inspired. Most important panels (portfolio, positions) get the most space. Agent control always visible top-right.
+      </p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Sidebar + Main Area</h3>
+      <div class="mockup">
+        <div class="mockup-header">Dashboard — 1440×900</div>
+        <div class="mockup-body" style="padding:12px;">
+          <div style="display:flex;gap:8px;font-size:11px;">
+            <!-- Sidebar -->
+            <div style="min-width:200px;display:flex;flex-direction:column;gap:8px;">
+              <div style="background:rgba(90,24,154,0.15);border-radius:8px;padding:10px;">
+                <strong style="color:#5A189A;">TradeMAX</strong>
+              </div>
+              <div style="background:rgba(255,214,10,0.1);border:1px solid rgba(255,214,10,0.3);border-radius:8px;padding:10px;">
+                <strong style="color:#FFD60A;">Agent Control</strong><br>
+                <span style="opacity:0.6;">Toggle • Symbol • Kill</span>
+              </div>
+              <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+                <strong>Portfolio</strong><br>
+                <span style="opacity:0.6;">Balance • PnL</span>
+              </div>
+              <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+                <strong>AI Feed</strong><br>
+                <span style="opacity:0.6;">Last decision</span>
+              </div>
+              <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+                <strong>Settings</strong><br>
+                <span style="opacity:0.6;">Keys • Theme</span>
+              </div>
+            </div>
+            <!-- Main -->
+            <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+              <div style="flex:1;background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+                <strong>Live Positions</strong><br>
+                <span style="opacity:0.6;">Full-width positions table</span>
+              </div>
+              <div style="flex:1;background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+                <strong>Recent Trades</strong><br>
+                <span style="opacity:0.6;">Full-width trade history</span>
+              </div>
+              <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:10px;">
+                <strong>Live Logs</strong><br>
+                <span style="opacity:0.6;">Scrolling event stream</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="margin-top:8px;font-size:13px;">Fixed sidebar with controls + summary. Main area dedicated to data tables. More app-like feel, less dashboard-like.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Full-Width Stacked Rows</h3>
+      <div class="mockup">
+        <div class="mockup-header">Dashboard — 1440×900</div>
+        <div class="mockup-body" style="padding:12px;display:flex;flex-direction:column;gap:6px;font-size:11px;">
+          <div style="display:flex;gap:6px;">
+            <div style="flex:1;background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:8px;">
+              <strong>Portfolio</strong>
+            </div>
+            <div style="flex:1;background:rgba(255,214,10,0.1);border:1px solid rgba(255,214,10,0.3);border-radius:8px;padding:8px;">
+              <strong style="color:#FFD60A;">Agent Control</strong>
+            </div>
+            <div style="flex:1;background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:8px;">
+              <strong>AI Decision</strong>
+            </div>
+          </div>
+          <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:8px;">
+            <strong>Live Positions</strong> — full width table
+          </div>
+          <div style="background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:8px;">
+            <strong>Recent Trades</strong> — full width table
+          </div>
+          <div style="display:flex;gap:6px;">
+            <div style="flex:1;background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:8px;">
+              <strong>Live Logs</strong>
+            </div>
+            <div style="flex:1;background:rgba(90,24,154,0.08);border:1px solid rgba(90,24,154,0.2);border-radius:8px;padding:8px;">
+              <strong>API Keys</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="margin-top:8px;font-size:13px;">Simple stacked rows. Top row = summary cards, middle = data tables, bottom = logs + settings. Straightforward but less information density.</p>
+    </div>
+  </div>
+</div>

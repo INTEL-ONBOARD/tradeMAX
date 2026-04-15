@@ -1,0 +1,88 @@
+<h2>TradeMAX Rebuild — Architecture Approach</h2>
+<p class="subtitle">How should the Electron main process, IPC bridge, and React renderer be structured?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Monolithic Main Process + Thin Renderer</h3>
+      <p><strong>All business logic in main process.</strong> Services (trade engine, risk engine, AI, exchange APIs, auth, DB) live as modules in the main process. Renderer is purely a display layer — calls IPC for everything, receives event streams.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>Maximum security — renderer has zero access to secrets</li>
+            <li>Simple mental model: main = brain, renderer = screen</li>
+            <li>Matches your "pure IPC rendering" requirement exactly</li>
+            <li>Single event loop for trade execution — no race conditions</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Heavy main process — CPU-intensive work could block window management</li>
+            <li>Larger IPC surface area (~30+ channels)</li>
+            <li>Harder to unit test without Electron harness</li>
+          </ul>
+        </div>
+      </div>
+      <p style="margin-top:12px;padding:8px 12px;background:rgba(90,24,154,0.15);border-radius:8px;font-size:14px;">
+        <strong>⭐ Recommended</strong> — Cleanest security boundary. Trading systems need deterministic execution order, which a single-process pipeline guarantees.
+      </p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Main Process + Worker Threads</h3>
+      <p><strong>Core orchestration in main, heavy computation in workers.</strong> Trade engine and AI service run in Node.js Worker Threads. Main process routes IPC and manages lifecycle. Renderer still thin.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>Main process stays responsive — workers handle indicator math + AI calls</li>
+            <li>Can parallelize market analysis across symbols</li>
+            <li>Still secure — workers run in main context, not renderer</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Significantly more complex — message passing between main ↔ workers</li>
+            <li>Shared state management becomes harder</li>
+            <li>Overkill for single-symbol trading with 8-second loop intervals</li>
+            <li>Harder to debug — stack traces cross thread boundaries</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Microservice-Style (Main + Sidecar Processes)</h3>
+      <p><strong>Separate Node processes for each service domain.</strong> Main process spawns child processes for trade engine, exchange connectors, and AI service. They communicate via IPC pipes or local sockets. Renderer talks only to main.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>Process isolation — crash in AI service doesn't kill trading</li>
+            <li>Can restart individual services independently</li>
+            <li>Scales to multi-exchange easily later</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Massive complexity overhead for a desktop app</li>
+            <li>Multiple processes = more memory, harder packaging</li>
+            <li>IPC between processes adds latency to trade execution</li>
+            <li>Over-engineered for single-user, single-exchange scope</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
