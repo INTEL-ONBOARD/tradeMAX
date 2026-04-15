@@ -1,37 +1,127 @@
-# Exchange and Claude API Integration Guide
+# TradeMAX v2 — API Integration Reference
 
-## Binance
-- Supports spot and futures endpoints.
-- Uses HMAC SHA256 signed requests.
-- Live ticker uses Binance trade stream websocket.
+## Exchange Factory Pattern
 
-### Required permissions
-- Spot/Futures trading permissions as needed
-- Read balances and positions
+TradeMAX maintains a single exchange service instance per trading session. The factory in `src/services/exchangeFactory.ts` returns either a `BinanceService` or `BybitService` based on the user's configured exchange. Both implement the same interface (`ExchangeServiceInstance`), so the trade engine is exchange-agnostic at runtime.
 
-### Notes
-- Keep API key and secret in user settings; app encrypts at rest.
-- Start with reduced leverage and strict risk caps.
+```
+createExchangeService("binance") → BinanceService
+createExchangeService("bybit")   → BybitService
+```
 
-## Bybit
-- Uses `bybit-api` SDK for REST and websocket access.
-- Supports unified account balance lookup and linear futures positions.
+The active instance is created when the agent starts and destroyed (`exchange.destroy()`) when it stops or the kill switch fires. This prevents key material from remaining in memory between sessions.
 
-### Required permissions
-- Read wallet/position data
-- Spot/futures trade execution permissions
+---
 
-## Claude
-- Uses `@anthropic-ai/sdk` in Electron main process only.
-- AI response must be strict JSON with deterministic keys.
-- Invalid payloads are rejected and logged.
+## Binance Integration
+
+**Source:** `src/services/binanceService.ts`
+
+### Signing
+
+All private requests use HMAC-SHA256 signing. The signature is computed over the query string including a server timestamp, then appended as `&signature=<hex>`. The API key is passed in the `X-MBX-APIKEY` request header.
+
+```
+params + timestamp → HMAC-SHA256(apiSecret) → signature
+```
+
+### Endpoints
+
+| Operation | Base URL |
+|---|---|
+| Spot trading | `https://api.binance.com` |
+| Futures trading | `https://fapi.binance.com` |
+
+| Call | Endpoint |
+|---|---|
+| Portfolio balance | `GET /api/v3/account` (spot) / `GET /fapi/v2/account` (futures) |
+| Open positions | `GET /fapi/v2/positionRisk` (futures) |
+| Place order | `POST /api/v3/order` (spot) / `POST /fapi/v1/order` (futures) |
+| Cancel orders | `DELETE /api/v3/openOrders` / `DELETE /fapi/v1/allOpenOrders` |
+
+### WebSocket Ticker
+
+Live price feed uses the Binance combined stream WebSocket:
+```
+wss://stream.binance.com:9443/ws/<symbol>@aggTrade
+```
+
+On each message the trade engine adds a `PriceBar` to the rolling 250-bar buffer (`ENGINE.PRICE_BUFFER_SIZE`). The WebSocket reconnects automatically up to `ENGINE.WS_RECONNECT_RETRIES` (3) times before reporting an API failure to the safety service.
+
+---
+
+## Bybit Integration
+
+**Source:** `src/services/bybitService.ts`
+
+Bybit is accessed via the `bybit-api` npm package (v4.x, V5 API). The service uses the `RestClientV5` for REST calls and handles unified account balance and linear futures positions.
+
+```typescript
+import { RestClientV5 } from "bybit-api";
+```
+
+The V5 unified account endpoint returns balances across spot, derivatives, and options in a single response. Linear futures positions are queried from `GET /v5/position/list`.
+
+Bybit order placement uses `POST /v5/order/create` with category `linear` for perpetual futures.
+
+---
+
+## Claude AI Integration
+
+**Source:** `src/services/aiService.ts`
+
+### Request Contract
+
+The trade engine sends a structured `AIPromptData` payload to Claude including:
+- Current symbol and exchange
+- Recent price bars (OHLCV)
+- Computed indicator values (RSI, MACD line, MACD signal, MACD histogram)
+- Current portfolio snapshot
+- Open positions
+- Configured risk profile
+
+Claude is instructed via a system prompt to respond with **only** a raw JSON object — no markdown, no code blocks, no extra text.
+
+### Response Schema (Zod-validated)
+
+```json
+{
+  "decision": "BUY" | "SELL" | "HOLD",
+  "confidence": 0.0,
+  "entry": 0.0,
+  "stop_loss": 0.0,
+  "take_profit": 0.0,
+  "reason": "short explanation"
+}
+```
+
+Validation is performed by the `aiDecisionSchema` Zod schema in `src/shared/validators.ts`. On any failure — JSON parse error, schema mismatch, or API timeout — the service returns the `HOLD_FALLBACK` constant and logs an error. The trade engine never crashes on an AI failure; it simply skips execution for that cycle.
+
+### Model Configuration
+
+The model is read from `process.env.CLAUDE_MODEL` at runtime, defaulting to `claude-sonnet-4-20250514`. The API key is read from `process.env.CLAUDE_API_KEY`. Both are available only in the main process.
+
+---
+
+## Error Handling and Retry Policy
+
+All exchange service calls that can fail follow this pattern:
+
+1. First attempt.
+2. On failure, retry up to `ENGINE.EXCHANGE_RETRY_COUNT` (3) times.
+3. Delay between retries uses exponential backoff.
+4. If all retries are exhausted, `safetyService.reportApiFailure()` is called which freezes the agent (`reason: "API_FAILURE"`).
+
+The AI service applies a `ENGINE.AI_TIMEOUT_MS` (30 second) timeout per Claude call. If the call times out or throws, the HOLD fallback is returned immediately — no retries for AI calls to prevent stacked latency during a fast-moving market.
+
+WebSocket reconnection for the market data stream is attempted up to `ENGINE.WS_RECONNECT_RETRIES` (3) times with a short pause between attempts. Failure to reconnect freezes the agent.
+
+---
 
 ## Security Boundaries
-- Renderer never receives exchange secrets.
-- Main process stores encrypted secret blobs in MongoDB.
-- Trade execution occurs only after risk engine approval.
 
-## Suggested production hardening
-- Add nonce replay checks and request idempotency keys.
-- Add exchange retry policy with circuit breaker.
-- Add separate paper-trading mode before live deploy.
+- Exchange API keys and secrets are decrypted from MongoDB only inside the trade engine's `start()` call, immediately before `exchange.initialize()`.
+- The decrypted values exist in memory only for the duration of the active session.
+- `exchange.destroy()` zeroes out the key strings on stop.
+- The renderer process never receives key values; IPC responses from settings endpoints return only existence flags or masked representations.
+- All Claude API calls originate from the main process. The `CLAUDE_API_KEY` environment variable is never forwarded to the renderer context.
