@@ -6,6 +6,7 @@ export const IPC = {
   AUTH_SESSION: "auth:session",
 
   SETTINGS_SAVE_API_KEYS: "settings:save-api-keys",
+  SETTINGS_SAVE_CLAUDE_KEY: "settings:save-claude-key",
   SETTINGS_GET: "settings:get",
   SETTINGS_UPDATE: "settings:update",
 

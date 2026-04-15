@@ -8,6 +8,7 @@ export interface IUser extends Document {
     binance: { apiKey: string; apiSecret: string };
     bybit: { apiKey: string; apiSecret: string };
   };
+  claudeApiKey: string;
   selectedExchange: "binance" | "bybit";
   tradingMode: "spot" | "futures";
   riskProfile: {
@@ -38,6 +39,7 @@ const userSchema = new Schema<IUser>(
         apiSecret: { type: String, default: "" },
       },
     },
+    claudeApiKey: { type: String, default: "" },
     selectedExchange: { type: String, enum: ["binance", "bybit"], default: "binance" },
     tradingMode: { type: String, enum: ["spot", "futures"], default: "spot" },
     riskProfile: {

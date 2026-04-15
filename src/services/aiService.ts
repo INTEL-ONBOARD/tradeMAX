@@ -27,20 +27,26 @@ const HOLD_FALLBACK: AIDecision = {
 };
 
 let client: Anthropic | null = null;
+let currentApiKey: string | null = null;
 
-function getClient(): Anthropic {
-  if (client) return client;
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) throw new Error("CLAUDE_API_KEY not set in environment");
+function getClient(apiKey: string): Anthropic {
+  if (client && currentApiKey === apiKey) return client;
   client = new Anthropic({ apiKey });
+  currentApiKey = apiKey;
   return client;
 }
 
-export async function getAIDecision(data: AIPromptData): Promise<AIDecision> {
+export async function getAIDecision(data: AIPromptData, claudeApiKey?: string): Promise<AIDecision> {
+  const apiKey = claudeApiKey || process.env.CLAUDE_API_KEY;
+  if (!apiKey) {
+    await logger.error("AI", "No Claude API key configured — set it in Settings or .env");
+    return HOLD_FALLBACK;
+  }
+
   const model = process.env.CLAUDE_MODEL ?? "claude-sonnet-4-20250514";
 
   try {
-    const response = await getClient().messages.create({
+    const response = await getClient(apiKey).messages.create({
       model,
       max_tokens: 512,
       system: SYSTEM_PROMPT,

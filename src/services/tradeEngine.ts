@@ -38,6 +38,7 @@ export class TradeEngine {
   private lastAIDecision: AIDecision | null = null;
   private callbacks: StreamCallback = {};
   private apiFailures = 0;
+  private claudeApiKey: string | undefined = undefined;
 
   setCallbacks(cb: StreamCallback): void {
     this.callbacks = cb;
@@ -77,6 +78,9 @@ export class TradeEngine {
 
     const decryptedKey = decrypt(keys.apiKey);
     const decryptedSecret = decrypt(keys.apiSecret);
+
+    // Decrypt Claude API key if user has one stored
+    this.claudeApiKey = user.claudeApiKey ? decrypt(user.claudeApiKey) : undefined;
 
     this.exchange = createExchangeService(selectedExchange);
     await this.exchange.initialize({ apiKey: decryptedKey, apiSecret: decryptedSecret }, user.tradingMode);
@@ -290,7 +294,7 @@ export class TradeEngine {
         riskProfile: user.riskProfile,
       };
 
-      const decision = await getAIDecision(promptData);
+      const decision = await getAIDecision(promptData, this.claudeApiKey);
       this.lastAIDecision = decision;
       this.callbacks.onAIDecision?.(decision);
       await logger.info("AI", `Decision: ${decision.decision} (confidence: ${decision.confidence})`, { decision });

@@ -1,6 +1,6 @@
 import { ipcMain, type BrowserWindow } from "electron";
 import { IPC, STREAM } from "../shared/constants.js";
-import { apiKeysSchema, settingsUpdateSchema, agentStartSchema } from "../shared/validators.js";
+import { apiKeysSchema, claudeKeySchema, settingsUpdateSchema, agentStartSchema } from "../shared/validators.js";
 import * as auth from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
 import { tradeEngine } from "../services/tradeEngine.js";
@@ -62,6 +62,14 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     const parsed = apiKeysSchema.parse(data);
     await auth.saveApiKeys(currentUserId, parsed.exchange, parsed.apiKey, parsed.apiSecret);
     await logger.info("SYSTEM", `API keys saved for ${parsed.exchange}`);
+  });
+
+  ipcMain.handle(IPC.SETTINGS_SAVE_CLAUDE_KEY, async (_e, data) => {
+    if (!currentUserId) throw new Error("Not authenticated");
+    const parsed = claudeKeySchema.parse(data);
+    await auth.saveClaudeKey(currentUserId, parsed.claudeApiKey);
+    await logger.info("SYSTEM", "Claude API key saved");
+    return auth.getSettings(currentUserId);
   });
 
   ipcMain.handle(IPC.SETTINGS_GET, async () => {

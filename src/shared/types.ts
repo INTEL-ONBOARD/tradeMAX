@@ -11,6 +11,7 @@ export interface UserSettings {
   riskProfile: RiskProfile;
   agentModeEnabled: boolean;
   themePreference: "dark" | "light";
+  hasClaudeKey: boolean;
 }
 
 export interface RiskProfile {

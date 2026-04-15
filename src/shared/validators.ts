@@ -17,6 +17,10 @@ export const apiKeysSchema = z.object({
   apiSecret: z.string().min(1),
 });
 
+export const claudeKeySchema = z.object({
+  claudeApiKey: z.string().min(1),
+});
+
 export const settingsUpdateSchema = z.object({
   selectedExchange: z.enum(["binance", "bybit"]).optional(),
   tradingMode: z.enum(["spot", "futures"]).optional(),

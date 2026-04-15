@@ -26,6 +26,7 @@ function toSettings(user: IUser): UserSettings {
     riskProfile: user.riskProfile,
     agentModeEnabled: user.agentModeEnabled,
     themePreference: user.themePreference,
+    hasClaudeKey: !!user.claudeApiKey,
   };
 }
 
@@ -107,6 +108,11 @@ export async function getSettings(userId: string): Promise<UserSettings> {
   const user = await User.findById(userId);
   if (!user) throw new Error("USER_NOT_FOUND");
   return toSettings(user);
+}
+
+export async function saveClaudeKey(userId: string, claudeApiKey: string): Promise<void> {
+  const encryptedKey = encrypt(claudeApiKey);
+  await User.findByIdAndUpdate(userId, { claudeApiKey: encryptedKey });
 }
 
 export async function getUserDoc(userId: string): Promise<IUser> {
