@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "dist/main",
     "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    "moduleResolution": "bundler"
   },
   "include": ["src/main/**/*", "src/services/**/*", "src/db/**/*", "src/shared/**/*"]
 }
