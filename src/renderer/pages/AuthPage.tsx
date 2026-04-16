@@ -22,7 +22,7 @@ function InputField({
     <div
       className={`flex items-center gap-3 rounded-lg border transition-all px-3.5 py-3 ${
         focused
-          ? "border-[var(--border-focus)] shadow-[0_0_0_3px_rgba(59,130,246,0.1)] bg-[var(--bg-inset)]"
+          ? "border-[var(--border-focus)] shadow-[0_0_0_3px_rgba(239,68,68,0.1)] bg-[var(--bg-inset)]"
           : "border-[var(--border)] bg-[var(--bg-inset)] hover:border-[var(--border-strong)]"
       }`}
     >
@@ -92,7 +92,7 @@ export function AuthPage() {
       {/* Ambient glow */}
       <div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[400px] rounded-full opacity-[0.07] blur-3xl pointer-events-none"
-        style={{ background: "radial-gradient(ellipse, #3B82F6 0%, transparent 70%)" }}
+        style={{ background: "radial-gradient(ellipse, #EF4444 0%, transparent 70%)" }}
       />
 
       <motion.div
@@ -105,7 +105,7 @@ export function AuthPage() {
           {/* Logo + Back */}
           <div className="flex items-center justify-between mb-7">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-primary-600 flex items-center justify-center shadow-[0_2px_8px_rgba(59,130,246,0.4)]">
+              <div className="w-7 h-7 rounded-lg bg-primary-600 flex items-center justify-center shadow-[0_2px_8px_rgba(239,68,68,0.4)]">
                 <TrendingUp size={13} className="text-white" />
               </div>
               <span className="font-bold text-sm text-[var(--text-primary)]">TradeMAX</span>

@@ -57,7 +57,7 @@ export const useAppStore = create<AppState>((set) => ({
   user: null,
   settings: null,
 
-  theme: "dark",
+  theme: "light",
 
   portfolio: null,
   positions: [],
@@ -76,11 +76,13 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => {
       const next = s.theme === "dark" ? "light" : "dark";
       document.documentElement.setAttribute("data-theme", next);
+      localStorage.setItem("theme-preference", next);
       return { theme: next };
     }),
 
   setTheme: (theme) => {
     document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme-preference", theme);
     set({ theme });
   },
 

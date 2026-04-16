@@ -19,7 +19,7 @@ export function IntroPage() {
       {/* Ambient glow */}
       <div
         className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full opacity-10 blur-3xl pointer-events-none"
-        style={{ background: "radial-gradient(ellipse, #3B82F6 0%, transparent 70%)" }}
+        style={{ background: "radial-gradient(ellipse, #EF4444 0%, transparent 70%)" }}
       />
 
       <div className="relative z-10 flex flex-col items-center gap-10 px-6 text-center">
@@ -28,7 +28,7 @@ export function IntroPage() {
           initial={{ scale: 0.4, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] }}
-          className="w-16 h-16 rounded-2xl bg-primary-600 flex items-center justify-center shadow-[0_0_40px_rgba(59,130,246,0.5)]"
+          className="w-16 h-16 rounded-2xl bg-primary-600 flex items-center justify-center shadow-[0_0_40px_rgba(239,68,68,0.5)]"
         >
           <TrendingUp size={30} className="text-white" />
         </motion.div>

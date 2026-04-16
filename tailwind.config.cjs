@@ -6,17 +6,17 @@ module.exports = {
       colors: {
         // Brand
         primary: {
-          DEFAULT: "#3B82F6",
-          50:  "#EFF6FF",
-          100: "#DBEAFE",
-          200: "#BFDBFE",
-          300: "#93C5FD",
-          400: "#60A5FA",
-          500: "#3B82F6",
-          600: "#2563EB",
-          700: "#1D4ED8",
-          800: "#1E40AF",
-          900: "#1E3A8A",
+          DEFAULT: "#EF4444",
+          50:  "#FEF2F2",
+          100: "#FEE2E2",
+          200: "#FECACA",
+          300: "#FCA5A5",
+          400: "#F87171",
+          500: "#EF4444",
+          600: "#DC2626",
+          700: "#B91C1C",
+          800: "#991B1B",
+          900: "#7F1D1D",
         },
         // Profit
         profit: {
@@ -76,8 +76,8 @@ module.exports = {
           "100%": { transform: "translateY(0)", opacity: "1" },
         },
         glowBlue: {
-          "0%, 100%": { boxShadow: "0 0 0 0 rgba(59, 130, 246, 0.4)" },
-          "50%": { boxShadow: "0 0 0 8px rgba(59, 130, 246, 0)" },
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(239, 68, 68, 0.4)" },
+          "50%": { boxShadow: "0 0 0 8px rgba(239, 68, 68, 0)" },
         },
         glowRed: {
           "0%, 100%": { boxShadow: "0 0 0 0 rgba(244, 63, 94, 0.5)" },
@@ -90,7 +90,7 @@ module.exports = {
       boxShadow: {
         "card": "0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)",
         "card-hover": "0 4px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)",
-        "glow-blue": "0 0 20px rgba(59, 130, 246, 0.4)",
+        "glow-blue": "0 0 20px rgba(239, 68, 68, 0.4)",
         "glow-red": "0 0 20px rgba(244, 63, 94, 0.4)",
         "glow-green": "0 0 20px rgba(16, 185, 129, 0.4)",
       },

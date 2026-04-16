@@ -6,6 +6,11 @@ export interface PasswordStrengthResult {
 }
 
 export function calculatePasswordStrength(password: string): PasswordStrengthResult {
+  // Handle null/undefined input
+  if (!password) {
+    password = '';
+  }
+
   let score = 0;
 
   // Length: 0-20 points
@@ -14,13 +19,18 @@ export function calculatePasswordStrength(password: string): PasswordStrengthRes
   if (password.length >= 16) score += 5;
 
   // Character variety: 0-70 points (0-10 each for variety + bonuses)
-  if (/[a-z]/.test(password)) score += 10; // lowercase
-  if (/[A-Z]/.test(password)) score += 10; // uppercase
-  if (/[0-9]/.test(password)) score += 10; // numbers
-  if (/[^a-zA-Z0-9]/.test(password)) score += 20; // special characters
+  const hasLower = /[a-z]/.test(password);
+  const hasUpper = /[A-Z]/.test(password);
+  const hasNumbers = /[0-9]/.test(password);
+  const hasSymbols = /[^a-zA-Z0-9]/.test(password);
+
+  if (hasLower) score += 10; // lowercase
+  if (hasUpper) score += 10; // uppercase
+  if (hasNumbers) score += 10; // numbers
+  if (hasSymbols) score += 20; // special characters
 
   // Bonus for high entropy combinations
-  const charTypes = [/[a-z]/.test(password), /[A-Z]/.test(password), /[0-9]/.test(password), /[^a-zA-Z0-9]/.test(password)].filter(Boolean).length;
+  const charTypes = [hasLower, hasUpper, hasNumbers, hasSymbols].filter(Boolean).length;
   if (charTypes === 4) score += 20; // bonus for all four types
 
   // Penalty for common patterns
@@ -45,12 +55,15 @@ export function calculatePasswordStrength(password: string): PasswordStrengthRes
   } else if (score < 60) {
     level = 'fair';
     message = 'Fair password';
+    helperText = undefined;
   } else if (score < 85) {
     level = 'good';
     message = 'Good password';
+    helperText = undefined;
   } else {
     level = 'strong';
     message = 'Strong password';
+    helperText = undefined;
   }
 
   return { score, level, message, helperText };
@@ -63,6 +76,7 @@ export interface ValidationError {
 
 export function validateEmail(email: string): string | null {
   if (!email.trim()) return 'Email is required';
+  // Basic email validation - accepts format user@domain.tld
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) return 'Invalid email address';
   return null;
@@ -77,6 +91,6 @@ export function validatePassword(password: string, minLength: number = 8): strin
 export function validateName(name: string): string | null {
   if (!name.trim()) return 'Name is required';
   if (name.trim().length < 2) return 'Name must be at least 2 characters';
-  if (name.length > 50) return 'Name must be less than 50 characters';
+  if (name.trim().length > 50) return 'Name must be less than 50 characters';
   return null;
 }

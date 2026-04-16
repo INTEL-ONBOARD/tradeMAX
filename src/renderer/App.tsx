@@ -21,22 +21,34 @@ import { CustomTitleBar } from "./components/CustomTitleBar";
 
 export default function App() {
   const currentScreen = useAppStore((s) => s.currentScreen);
+  const store = useAppStore.getState();
+
+  // Initialize theme from localStorage on app startup
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme-preference") as "dark" | "light" | null;
+    if (savedTheme) {
+      store.setTheme(savedTheme);
+    } else {
+      // Default to light theme on first load
+      store.setTheme("light");
+    }
+  }, []);
 
   useEffect(() => {
-    if (!window.api) return;
-    const store = useAppStore.getState();
+    const api = (window as any).api;
+    if (!api) return;
     const unsubs: (() => void)[] = [];
 
-    unsubs.push(window.api.on(STREAM.MARKET_TICK, (d) => store.setMarketTick(d as MarketTick)));
-    unsubs.push(window.api.on(STREAM.PORTFOLIO, (d) => store.setPortfolio(d as PortfolioSnapshot)));
-    unsubs.push(window.api.on(STREAM.POSITIONS, (d) => store.setPositions(d as Position[])));
-    unsubs.push(window.api.on(STREAM.TRADE_EXECUTED, (d) => store.addTrade(d as Trade)));
-    unsubs.push(window.api.on(STREAM.AI_DECISION, (d) => store.setLastAIDecision(d as AIDecision)));
-    unsubs.push(window.api.on(STREAM.AGENT_STATUS, (d) => store.setAgentStatus(d as AgentStatus)));
-    unsubs.push(window.api.on(STREAM.LOG, (d) => store.addLog(d as LogEntry)));
+    unsubs.push(api.on(STREAM.MARKET_TICK, (d: any) => store.setMarketTick(d as MarketTick)));
+    unsubs.push(api.on(STREAM.PORTFOLIO, (d: any) => store.setPortfolio(d as PortfolioSnapshot)));
+    unsubs.push(api.on(STREAM.POSITIONS, (d: any) => store.setPositions(d as Position[])));
+    unsubs.push(api.on(STREAM.TRADE_EXECUTED, (d: any) => store.addTrade(d as Trade)));
+    unsubs.push(api.on(STREAM.AI_DECISION, (d: any) => store.setLastAIDecision(d as AIDecision)));
+    unsubs.push(api.on(STREAM.AGENT_STATUS, (d: any) => store.setAgentStatus(d as AgentStatus)));
+    unsubs.push(api.on(STREAM.LOG, (d: any) => store.addLog(d as LogEntry)));
 
     unsubs.push(
-      window.api.on("session:restored", (d) => {
+      api.on("session:restored", (d: any) => {
         const data = d as { session: UserSession; settings: UserSettings };
         store.setUser(data.session);
         store.setSettings(data.settings);

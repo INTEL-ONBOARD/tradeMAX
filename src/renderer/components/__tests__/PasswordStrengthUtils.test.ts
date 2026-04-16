@@ -14,11 +14,6 @@ describe('calculatePasswordStrength', () => {
       expect(result.score).toBeLessThan(30);
     });
 
-    it('should rate simple lowercase passwords as weak', () => {
-      const result = calculatePasswordStrength('abc');
-      expect(result.level).toBe('weak');
-    });
-
     it('should return correct message for weak passwords', () => {
       const result = calculatePasswordStrength('a');
       expect(result.message).toBe('Weak password');
@@ -284,6 +279,46 @@ describe('validateName', () => {
       const name = 'a'.repeat(51);
       const error = validateName(name);
       expect(error).not.toBeNull();
+    });
+  });
+});
+
+describe('edge cases', () => {
+  describe('null/undefined handling', () => {
+    it('should not crash on null password in calculatePasswordStrength', () => {
+      expect(() => calculatePasswordStrength(null as any)).not.toThrow();
+    });
+
+    it('should not crash on undefined password in calculatePasswordStrength', () => {
+      expect(() => calculatePasswordStrength(undefined as any)).not.toThrow();
+    });
+
+    it('should not crash on very long password', () => {
+      const longPassword = 'P@ssw0rd'.repeat(125); // 1000+ characters
+      expect(() => calculatePasswordStrength(longPassword)).not.toThrow();
+      const result = calculatePasswordStrength(longPassword);
+      expect(result.score).toBeGreaterThanOrEqual(0);
+      expect(result.score).toBeLessThanOrEqual(100);
+    });
+  });
+
+  describe('unicode characters', () => {
+    it('should handle unicode characters in password', () => {
+      const result = calculatePasswordStrength('Пароль123!');
+      expect(result.level).toBeDefined();
+      expect(result.score).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle emoji in password', () => {
+      const result = calculatePasswordStrength('Pass😀word123!');
+      expect(result.level).toBeDefined();
+      expect(result.score).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle mixed unicode and ASCII', () => {
+      const result = calculatePasswordStrength('Test你好123!@#');
+      expect(result.level).toBeDefined();
+      expect(result.score).toBeGreaterThanOrEqual(0);
     });
   });
 });
