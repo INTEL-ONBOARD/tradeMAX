@@ -18,6 +18,7 @@ import type {
 } from "../shared/types";
 
 import { CustomTitleBar } from "./components/CustomTitleBar";
+import { ConnectivityOverlay } from "./components/ConnectivityOverlay";
 
 export default function App() {
   const currentScreen = useAppStore((s) => s.currentScreen);
@@ -64,6 +65,8 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden" style={{ background: "var(--bg-base)" }}>
+      <ConnectivityOverlay />
+
       {/* Invisible drag region for Intro/Auth pages */}
       {currentScreen !== "dashboard" && <div className="absolute top-0 left-0 right-0 h-8 z-50" style={{ WebkitAppRegion: "drag", pointerEvents: "none" } as React.CSSProperties} />}
       
