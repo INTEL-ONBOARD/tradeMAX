@@ -1,13 +1,12 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { IPC } from "../../shared/constants";
 import type { UserSession, UserSettings } from "../../shared/types";
-import { Mail, Lock, User, AlertCircle, Loader2, Chrome } from "./icons";
+import { Mail, Lock, User, Loader2, ArrowRight, Chrome } from "./icons";
 import { InputField } from "./InputField";
 import { PasswordStrengthBar } from "./PasswordStrengthBar";
 import { validateEmail, validatePassword, validateName } from "./PasswordStrengthUtils";
-import { SplitScreenLayout } from "./SplitScreenLayout";
-import { SuccessStories } from "./SuccessStories";
+import { AuthToast, type ToastType } from "./AuthToast";
 
 interface RegisterFormProps {
   onLoginClick: () => void;
@@ -24,8 +23,17 @@ export function RegisterForm({ onLoginClick, onSuccess }: RegisterFormProps) {
     password: null,
   });
   const [dirtyFields, setDirtyFields] = useState<Record<string, boolean>>({});
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Toast state
+  const [toast, setToast] = useState<{ message: string; type: ToastType; visible: boolean }>({
+    message: "",
+    type: "error",
+    visible: false,
+  });
+  const dismissToast = useCallback(() => setToast((t) => ({ ...t, visible: false })), []);
+  const showToast = (message: string, type: ToastType = "error") =>
+    setToast({ message, type, visible: true });
 
   const isFormValid =
     name.trim().length >= 2 &&
@@ -36,34 +44,23 @@ export function RegisterForm({ onLoginClick, onSuccess }: RegisterFormProps) {
   const handleNameChange = (value: string) => {
     setName(value);
     setDirtyFields((prev) => ({ ...prev, name: true }));
-    setErrors((prev) => ({
-      ...prev,
-      name: validateName(value),
-    }));
+    setErrors((prev) => ({ ...prev, name: validateName(value) }));
   };
 
   const handleEmailChange = (value: string) => {
     setEmail(value);
     setDirtyFields((prev) => ({ ...prev, email: true }));
-    setErrors((prev) => ({
-      ...prev,
-      email: validateEmail(value),
-    }));
+    setErrors((prev) => ({ ...prev, email: validateEmail(value) }));
   };
 
   const handlePasswordChange = (value: string) => {
     setPassword(value);
     setDirtyFields((prev) => ({ ...prev, password: true }));
-    setErrors((prev) => ({
-      ...prev,
-      password: validatePassword(value, 8),
-    }));
+    setErrors((prev) => ({ ...prev, password: validatePassword(value, 8) }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-
     if (!isFormValid) return;
 
     setLoading(true);
@@ -80,9 +77,9 @@ export function RegisterForm({ onLoginClick, onSuccess }: RegisterFormProps) {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong";
       if (msg.includes("EMAIL_EXISTS")) {
-        setError("An account with this email already exists.");
+        showToast("An account with this email already exists.");
       } else {
-        setError(msg);
+        showToast(msg);
       }
     } finally {
       setLoading(false);
@@ -90,204 +87,174 @@ export function RegisterForm({ onLoginClick, onSuccess }: RegisterFormProps) {
   };
 
   const handleGoogleAuth = async () => {
-    setError("");
-    setLoading(true);
-    try {
-      setError("Google OAuth not yet implemented");
-    } finally {
-      setLoading(false);
-    }
+    showToast("Google OAuth not yet implemented");
   };
 
-  const stories = [
-    {
-      id: "story-1",
-      quote: "TradeMAX helped me automate my crypto portfolio. +$25K in 3 months!",
-      author: "Sarah M.",
-      result: "+$25K in 3 months",
-      initials: "SM",
-    },
-    {
-      id: "story-2",
-      quote: "The safety controls give me peace of mind. I don't worry about my capital anymore.",
-      author: "Alex J.",
-      result: "Risk-adjusted 18% return",
-      initials: "AJ",
-    },
-    {
-      id: "story-3",
-      quote: "24/7 trading that actually works. This is the future of crypto.",
-      author: "Jordan K.",
-      result: "+$15K in 2 months",
-      initials: "JK",
-    },
-  ];
-
   return (
-    <SplitScreenLayout
-      leftContent={
-        <div>
-          <h2 className="text-3xl font-bold text-[var(--text-primary)] mb-2">
-            Join 5,000+ Traders
-          </h2>
-          <p className="text-[var(--text-secondary)] mb-8">
-            Real results from real users
-          </p>
-          <SuccessStories stories={stories} />
-        </div>
-      }
-      rightContent={
+    <motion.div
+      initial={{ opacity: 0, x: 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -16 }}
+      transition={{ duration: 0.3 }}
+      className="w-full"
+    >
+      {/* Toast overlay */}
+      <AuthToast {...toast} onDismiss={dismissToast} />
+
+      {/* Header */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
+          Get Started
+        </h2>
+        <p className="text-[13px] text-[var(--text-secondary)] mt-1.5">
+          Create your account to continue
+        </p>
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-4">
         <motion.div
-          key="register-form"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.4 }}
-          className="w-full max-w-[420px] mx-auto"
+          transition={{ delay: 0.05 }}
         >
-
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-[var(--text-primary)] leading-tight">
-              Create account
-            </h2>
-            <p className="text-sm text-[var(--text-secondary)] mt-1">
-              Set up TradeMAX to start autonomous trading
-            </p>
-          </div>
-
-          {/* Error Banner */}
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-4 flex items-start gap-2 p-3 rounded-lg border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)]"
-            >
-              <AlertCircle size={14} className="text-[var(--color-loss)] shrink-0 mt-0.5" />
-              <p className="text-xs text-[var(--color-loss)]">{error}</p>
-            </motion.div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-            >
-              <InputField
-                icon={User}
-                placeholder="Full name"
-                value={name}
-                onChange={handleNameChange}
-                error={errors.name}
-                isDirty={dirtyFields.name}
-                autoComplete="name"
-              />
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.2 }}
-            >
-              <InputField
-                icon={Mail}
-                type="email"
-                placeholder="Email address"
-                value={email}
-                onChange={handleEmailChange}
-                error={errors.email}
-                isDirty={dirtyFields.email}
-                autoComplete="email"
-              />
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.3 }}
-            >
-              <InputField
-                icon={Lock}
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={handlePasswordChange}
-                error={errors.password}
-                isDirty={dirtyFields.password}
-                autoComplete="new-password"
-              />
-              {dirtyFields.password && (
-                <PasswordStrengthBar password={password} />
-              )}
-            </motion.div>
-
-            {/* Submit Button */}
-            <motion.button
-              type="submit"
-              disabled={loading || !isFormValid}
-              className="btn-primary w-full py-3 mt-6"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.4 }}
-              whileHover={!loading ? { scale: 1.02 } : {}}
-              whileTap={!loading ? { scale: 0.98 } : {}}
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={15} className="animate-spin" /> Creating account...
-                </>
-              ) : (
-                "Create Account"
-              )}
-            </motion.button>
-          </form>
-
-          {/* Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[var(--border)]"></div>
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="px-2 bg-[var(--bg-base)] text-[var(--text-tertiary)]">
-                OR
-              </span>
-            </div>
-          </div>
-
-          {/* Google OAuth Button */}
-          <motion.button
-            type="button"
-            onClick={handleGoogleAuth}
-            disabled={loading}
-            className="btn-ghost w-full py-3 flex items-center justify-center gap-2"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.5 }}
-            whileHover={!loading ? { scale: 1.02 } : {}}
-            whileTap={!loading ? { scale: 0.98 } : {}}
-          >
-            <Chrome size={14} /> Continue with Google
-          </motion.button>
-
-          {/* Login Link */}
-          <motion.p
-            className="text-sm text-[var(--text-secondary)] text-center mt-6"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.6 }}
-          >
-            Already have an account?{" "}
-            <button
-              type="button"
-              onClick={onLoginClick}
-              className="text-primary-600 hover:text-primary-500 font-600 transition-colors hover:underline"
-            >
-              Login
-            </button>
-          </motion.p>
+          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+            Name
+          </label>
+          <InputField
+            icon={User}
+            placeholder="Your full name"
+            value={name}
+            onChange={handleNameChange}
+            error={errors.name}
+            isDirty={dirtyFields.name}
+            autoComplete="name"
+          />
         </motion.div>
-      }
-    />
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+            Email address
+          </label>
+          <InputField
+            icon={Mail}
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={handleEmailChange}
+            error={errors.email}
+            isDirty={dirtyFields.email}
+            autoComplete="email"
+          />
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+            Password
+          </label>
+          <InputField
+            icon={Lock}
+            type="password"
+            placeholder="Create a password"
+            value={password}
+            onChange={handlePasswordChange}
+            error={errors.password}
+            isDirty={dirtyFields.password}
+            autoComplete="new-password"
+          />
+          {dirtyFields.password && <PasswordStrengthBar password={password} />}
+        </motion.div>
+
+        {/* Submit */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="pt-2"
+        >
+          <motion.button
+            type="submit"
+            disabled={loading || !isFormValid}
+            className="w-full py-3 rounded-xl gradient-red text-white font-semibold text-sm flex items-center justify-center gap-2"
+            whileHover={!loading ? { scale: 1.01 } : {}}
+            whileTap={!loading ? { scale: 0.99 } : {}}
+          >
+            {loading ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Creating account...
+              </>
+            ) : (
+              <>
+                Create account
+                <ArrowRight size={14} />
+              </>
+            )}
+          </motion.button>
+        </motion.div>
+      </form>
+
+      {/* Login link */}
+      <p className="text-xs text-[var(--text-secondary)] text-center mt-5">
+        Already have an account?{" "}
+        <button
+          type="button"
+          onClick={onLoginClick}
+          className="text-[var(--color-loss)] hover:text-[var(--text-primary)] font-semibold transition-colors"
+        >
+          Sign in
+        </button>
+      </p>
+
+      {/* Divider */}
+      <div className="relative my-5">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-[var(--border)]" />
+        </div>
+        <div className="relative flex justify-center">
+          <span
+            className="px-3 text-[10px] uppercase tracking-widest font-medium text-[var(--text-tertiary)]"
+            style={{ background: "var(--bg-surface)" }}
+          >
+            or
+          </span>
+        </div>
+      </div>
+
+      {/* Social logins */}
+      <div className="flex gap-3">
+        <motion.button
+          type="button"
+          onClick={handleGoogleAuth}
+          disabled={loading}
+          whileHover={!loading ? { scale: 1.02 } : {}}
+          whileTap={!loading ? { scale: 0.98 } : {}}
+          className="flex-1 py-2.5 flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs font-medium transition-colors"
+          style={{ background: "var(--bg-elevated)" }}
+        >
+          <Chrome size={14} />
+          Google
+        </motion.button>
+        <motion.button
+          type="button"
+          disabled={loading}
+          whileHover={!loading ? { scale: 1.02 } : {}}
+          whileTap={!loading ? { scale: 0.98 } : {}}
+          className="flex-1 py-2.5 flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs font-medium transition-colors"
+          style={{ background: "var(--bg-elevated)" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+          Apple
+        </motion.button>
+      </div>
+    </motion.div>
   );
 }

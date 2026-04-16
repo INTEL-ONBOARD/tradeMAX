@@ -178,6 +178,37 @@ export function registerIpcHandlers(): void {
     await logger.info("SYSTEM", "User manually reset safety freeze");
   });
 
+  // ─── Exchange Pairs ──────────────────────────────────
+  ipcMain.handle(IPC.EXCHANGE_PAIRS, async () => {
+    if (!currentUserId) throw new Error("Not authenticated");
+
+    const user = await auth.getUserDoc(currentUserId);
+    const selectedExchange = user.selectedExchange;
+    const keys = user.exchangeKeys[selectedExchange];
+    if (!keys.apiKey || !keys.apiSecret) {
+      return { configured: false, pairs: [] };
+    }
+
+    try {
+      const { decrypt } = await import("../services/encryptionService.js");
+      const { createExchangeService } = await import("../services/exchangeFactory.js");
+
+      const userSalt = user.encryptionSalt || undefined;
+      const decryptedKey = decrypt(keys.apiKey, userSalt);
+      const decryptedSecret = decrypt(keys.apiSecret, userSalt);
+
+      const exchange = createExchangeService(selectedExchange);
+      await exchange.initialize({ apiKey: decryptedKey, apiSecret: decryptedSecret }, user.tradingMode);
+
+      const pairs = await exchange.getSymbols();
+      exchange.destroy();
+      return { configured: true, pairs };
+    } catch (err) {
+      await logger.error("SYSTEM", `Failed to fetch exchange pairs: ${err}`);
+      return { configured: true, pairs: [] };
+    }
+  });
+
   // ─── Logs ────────────────────────────────────────────
   ipcMain.handle(IPC.LOGS_RECENT, async (_e, data) => {
     if (!currentUserId) throw new Error("Not authenticated");

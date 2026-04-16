@@ -22,6 +22,8 @@ export const IPC = {
   AGENT_RESET_FREEZE: "agent:reset-freeze",
 
   LOGS_RECENT: "logs:recent",
+
+  EXCHANGE_PAIRS: "exchange:pairs",
 } as const;
 
 // ─── IPC Stream Events ─────────────────────────────────
@@ -44,9 +46,8 @@ export const RISK_DEFAULTS = {
   maxLeverage: 10,
 } as const;
 
-// ─── Trading Engine ────────────────────────────────────
+// ─── Trading Engine (fixed constants — not user-configurable) ──
 export const ENGINE = {
-  LOOP_INTERVAL_MS: 8000,
   PRICE_BUFFER_SIZE: 250,
   MIN_BARS_FOR_INDICATORS: 35,
   RSI_PERIOD: 14,
@@ -54,12 +55,27 @@ export const ENGINE = {
   MACD_SLOW: 26,
   MACD_SIGNAL: 9,
   AI_TIMEOUT_MS: 30000,
-  MAX_CONSECUTIVE_LOSSES: 3,
-  MAX_DRAWDOWN_PCT: 15,
-  WS_RECONNECT_RETRIES: 3,
   EXCHANGE_RETRY_COUNT: 3,
-  VOLATILITY_THRESHOLD_PCT: 5,
-  SPREAD_THRESHOLD_PCT: 0.5,
+  DAILY_PNL_CACHE_CYCLES: 15,
+} as const;
+
+// ─── User-configurable engine defaults ─────────────────
+export const ENGINE_DEFAULTS = {
+  tradingSymbol: "BTCUSDT",
+  autoPairSelection: false,
+  loopIntervalSec: 8,
+  candleTimeframe: "1m" as const,
+  maxSlippagePct: 0.5,
+  tradeCooldownSec: 30,
+  aiRetryCount: 2,
+  aiModel: "claude-sonnet-4-20250514",
+  maxConsecutiveLosses: 3,
+  maxDrawdownPct: 15,
+  volatilityThresholdPct: 5,
+  spreadThresholdPct: 0.5,
+  wsReconnectRetries: 5,
+  enableEMA: true,
+  enableBollingerBands: true,
 } as const;
 
 // ─── Allowed IPC Channels (for preload whitelist) ──────

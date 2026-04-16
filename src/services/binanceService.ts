@@ -2,11 +2,14 @@ import axios, { type AxiosInstance } from "axios";
 import crypto from "node:crypto";
 import WebSocket from "ws";
 import { logger } from "./loggerService.js";
-import { ENGINE } from "../shared/constants.js";
 import type { PortfolioSnapshot, Position, OrderResult, MarketTick, ExchangeKeys } from "../shared/types.js";
 
 const SPOT_BASE = "https://api.binance.com";
 const FUTURES_BASE = "https://fapi.binance.com";
+
+/** Binance rate limit: 1200 requests/min. We use 1100 as a safe threshold. */
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 1100;
 
 export class BinanceService {
   private apiKey = "";
@@ -16,6 +19,8 @@ export class BinanceService {
   private ws: WebSocket | null = null;
   private mode: "spot" | "futures" = "spot";
   private reconnectAttempts = 0;
+  private maxReconnectRetries = 5;
+  private requestTimestamps: number[] = [];
 
   constructor() {
     this.spot = axios.create({ baseURL: SPOT_BASE });
@@ -35,6 +40,27 @@ export class BinanceService {
     this.apiSecret = "";
   }
 
+  /** Simple rate limiter: waits if we've exceeded the safe request threshold. */
+  private async throttle(): Promise<void> {
+    const now = Date.now();
+    // Prune timestamps older than the window
+    this.requestTimestamps = this.requestTimestamps.filter(
+      (ts) => now - ts < RATE_LIMIT_WINDOW_MS,
+    );
+    if (this.requestTimestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+      const oldest = this.requestTimestamps[0]!;
+      const waitMs = RATE_LIMIT_WINDOW_MS - (now - oldest) + 50; // +50ms safety margin
+      logger.warn("SYSTEM", `Binance rate limit approaching, waiting ${waitMs}ms`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      // Prune again after waiting
+      const afterWait = Date.now();
+      this.requestTimestamps = this.requestTimestamps.filter(
+        (ts) => afterWait - ts < RATE_LIMIT_WINDOW_MS,
+      );
+    }
+    this.requestTimestamps.push(Date.now());
+  }
+
   private sign(params: Record<string, string | number>): string {
     const query = Object.entries(params)
       .map(([k, v]) => `${k}=${v}`)
@@ -44,6 +70,7 @@ export class BinanceService {
   }
 
   private async signedGet(client: AxiosInstance, path: string, params: Record<string, string | number> = {}): Promise<unknown> {
+    await this.throttle();
     const timestamp = Date.now();
     const allParams = { ...params, timestamp };
     const query = this.sign(allParams);
@@ -54,6 +81,7 @@ export class BinanceService {
   }
 
   private async signedPost(client: AxiosInstance, path: string, params: Record<string, string | number> = {}): Promise<unknown> {
+    await this.throttle();
     const timestamp = Date.now();
     const allParams = { ...params, timestamp };
     const query = this.sign(allParams);
@@ -64,6 +92,7 @@ export class BinanceService {
   }
 
   private async signedDelete(client: AxiosInstance, path: string, params: Record<string, string | number> = {}): Promise<unknown> {
+    await this.throttle();
     const timestamp = Date.now();
     const allParams = { ...params, timestamp };
     const query = this.sign(allParams);
@@ -78,6 +107,8 @@ export class BinanceService {
       const data = (await this.signedGet(this.spot, "/api/v3/account")) as {
         balances: Array<{ asset: string; free: string; locked: string }>;
       };
+      // TODO: Currently only counts USDT balance. Multi-asset support would require
+      // fetching prices for each asset and converting to a common denomination.
       let total = 0;
       for (const b of data.balances) {
         const free = parseFloat(b.free);
@@ -169,7 +200,41 @@ export class BinanceService {
     await this.signedPost(this.futures, "/fapi/v1/leverage", { symbol, leverage });
   }
 
-  startTickerStream(symbol: string, callback: (tick: MarketTick) => void): void {
+  /** Fetch the current bid/ask spread as a percentage for the given symbol. */
+  async getSpread(symbol: string): Promise<number> {
+    await this.throttle();
+    const client = this.mode === "spot" ? this.spot : this.futures;
+    const path = this.mode === "spot" ? "/api/v3/ticker/bookTicker" : "/fapi/v1/ticker/bookTicker";
+    const { data } = await client.get(path, { params: { symbol } });
+    const bid = parseFloat((data as { bidPrice: string }).bidPrice);
+    const ask = parseFloat((data as { askPrice: string }).askPrice);
+    if (bid <= 0 || ask <= 0) return 0;
+    const mid = (ask + bid) / 2;
+    return ((ask - bid) / mid) * 100;
+  }
+
+  /** Fetch all USDT trading pairs from the exchange. */
+  async getSymbols(): Promise<string[]> {
+    await this.throttle();
+    if (this.mode === "spot") {
+      const { data } = await this.spot.get("/api/v3/exchangeInfo");
+      const info = data as { symbols: Array<{ symbol: string; status: string; quoteAsset: string }> };
+      return info.symbols
+        .filter((s) => s.status === "TRADING" && s.quoteAsset === "USDT")
+        .map((s) => s.symbol)
+        .sort();
+    }
+    const { data } = await this.futures.get("/fapi/v1/exchangeInfo");
+    const info = data as { symbols: Array<{ symbol: string; status: string; quoteAsset: string }> };
+    return info.symbols
+      .filter((s) => s.status === "TRADING" && s.quoteAsset === "USDT")
+      .map((s) => s.symbol)
+      .sort();
+  }
+
+  startTickerStream(symbol: string, callback: (tick: MarketTick) => void, maxRetries = 5): void {
+    this.reconnectAttempts = 0;
+    this.maxReconnectRetries = maxRetries;
     this.stopTickerStream();
     const wsSymbol = symbol.toLowerCase();
     const baseUrl = this.mode === "spot" ? "wss://stream.binance.com:9443/ws" : "wss://fstream.binance.com/ws";
@@ -192,7 +257,7 @@ export class BinanceService {
     });
 
     this.ws.on("close", () => {
-      if (this.reconnectAttempts < ENGINE.WS_RECONNECT_RETRIES) {
+      if (this.reconnectAttempts < this.maxReconnectRetries) {
         this.reconnectAttempts++;
         const delay = Math.pow(2, this.reconnectAttempts - 1) * 1000;
         logger.warn("SYSTEM", `Binance WebSocket closed, reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
@@ -213,6 +278,6 @@ export class BinanceService {
       this.ws.close();
       this.ws = null;
     }
-    this.reconnectAttempts = ENGINE.WS_RECONNECT_RETRIES;
+    this.reconnectAttempts = 0;
   }
 }

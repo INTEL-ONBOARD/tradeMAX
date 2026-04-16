@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { SettingsModal } from "./SettingsModal";
-import { Zap, LayoutGrid, Settings, Shield } from "./icons";
+import { NotificationModal } from "./NotificationModal";
+import { Zap, LayoutGrid, Settings, Bell, LogOut } from "./icons";
 
 interface RibbonProps {
   activeView: string;
@@ -10,12 +11,18 @@ interface RibbonProps {
 
 export function SidebarRibbon({ activeView, onChangeView }: RibbonProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const agentStatus = useAppStore((s) => s.agentStatus);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const unreadCount = useAppStore((s) => s.notifications.filter((n) => !n.read).length);
+  const reset = useAppStore((s) => s.reset);
 
   const navItems = [
     { id: "agent", icon: Zap },
     { id: "tools", icon: LayoutGrid },
   ];
+
+  const handleLogout = () => {
+    reset();
+  };
 
   return (
     <>
@@ -48,6 +55,19 @@ export function SidebarRibbon({ activeView, onChangeView }: RibbonProps) {
             );
           })}
 
+          {/* Notifications */}
+          <button
+            onClick={() => setNotificationsOpen(true)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] transition-colors relative"
+          >
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-[var(--color-loss)] text-white text-[9px] font-bold px-1 leading-none">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => setSettingsOpen(true)}
             className="w-10 h-10 rounded-xl flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] transition-colors"
@@ -55,16 +75,22 @@ export function SidebarRibbon({ activeView, onChangeView }: RibbonProps) {
             <Settings size={20} />
           </button>
 
-          {/* Agent status badge */}
-          <div className="relative">
-            <Shield size={24} className={agentStatus.running ? "text-[var(--color-profit)]" : agentStatus.frozen ? "text-[var(--color-loss)]" : "text-[var(--text-tertiary)]"} />
-            <div className={`absolute bottom-0 right-[-2px] w-2.5 h-2.5 rounded-full border border-[var(--bg-surface)] ${agentStatus.running ? "bg-[var(--color-profit)]" : agentStatus.frozen ? "bg-[var(--color-loss)]" : "bg-transparent"
-              }`} />
-          </div>
+          {/* Divider */}
+          <div className="w-6 h-px bg-[var(--border)]" />
+
+          {/* Logout */}
+          <button
+            onClick={handleLogout}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--color-loss)] hover:bg-[var(--color-loss)]/10 transition-colors"
+            title="Logout"
+          >
+            <LogOut size={20} />
+          </button>
         </div>
       </aside>
 
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <NotificationModal isOpen={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </>
   );
 }

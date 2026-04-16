@@ -21,6 +21,24 @@ export const claudeKeySchema = z.object({
   claudeApiKey: z.string().min(1),
 });
 
+export const engineConfigSchema = z.object({
+  tradingSymbol: z.string().min(1).max(20).toUpperCase().optional(),
+  autoPairSelection: z.boolean().optional(),
+  loopIntervalSec: z.number().min(3).max(120).optional(),
+  candleTimeframe: z.enum(["1m", "5m", "15m"]).optional(),
+  maxSlippagePct: z.number().min(0.01).max(5).optional(),
+  tradeCooldownSec: z.number().min(0).max(600).optional(),
+  aiRetryCount: z.number().int().min(0).max(5).optional(),
+  aiModel: z.string().min(1).max(100).optional(),
+  maxConsecutiveLosses: z.number().int().min(1).max(20).optional(),
+  maxDrawdownPct: z.number().min(1).max(50).optional(),
+  volatilityThresholdPct: z.number().min(0.5).max(20).optional(),
+  spreadThresholdPct: z.number().min(0.01).max(5).optional(),
+  wsReconnectRetries: z.number().int().min(1).max(20).optional(),
+  enableEMA: z.boolean().optional(),
+  enableBollingerBands: z.boolean().optional(),
+});
+
 export const settingsUpdateSchema = z.object({
   selectedExchange: z.enum(["binance", "bybit"]).optional(),
   tradingMode: z.enum(["spot", "futures"]).optional(),
@@ -35,6 +53,7 @@ export const settingsUpdateSchema = z.object({
       maxLeverage: z.number().int().min(1).max(125).optional(),
     })
     .optional(),
+  engineConfig: engineConfigSchema.optional(),
 });
 
 export const aiDecisionSchema = z.object({

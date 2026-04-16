@@ -19,6 +19,7 @@ import type {
 
 import { CustomTitleBar } from "./components/CustomTitleBar";
 import { ConnectivityOverlay } from "./components/ConnectivityOverlay";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export default function App() {
   const currentScreen = useAppStore((s) => s.currentScreen);
@@ -53,9 +54,10 @@ export default function App() {
         const data = d as { session: UserSession; settings: UserSettings };
         store.setUser(data.session);
         store.setSettings(data.settings);
-        if (data.settings.themePreference) {
-          store.setTheme(data.settings.themePreference);
-        }
+        // Prefer localStorage theme; fall back to server preference
+        const savedPref = localStorage.getItem("theme-preference") as "dark" | "light" | null;
+        const theme = savedPref ?? data.settings.themePreference ?? "light";
+        store.setTheme(theme);
         store.setScreen("dashboard");
       })
     );
@@ -64,31 +66,33 @@ export default function App() {
   }, []);
 
   return (
-    <div className="h-screen w-screen overflow-hidden" style={{ background: "var(--bg-base)" }}>
-      <ConnectivityOverlay />
+    <ErrorBoundary>
+      <div className="h-screen w-screen overflow-hidden" style={{ background: "var(--bg-base)" }}>
+        <ConnectivityOverlay />
 
-      {/* Invisible drag region for Intro/Auth pages */}
-      {currentScreen !== "dashboard" && <div className="absolute top-0 left-0 right-0 h-8 z-50" style={{ WebkitAppRegion: "drag", pointerEvents: "none" } as React.CSSProperties} />}
-      
-      <div className="h-full w-full relative">
-        <AnimatePresence mode="wait">
-          {currentScreen === "intro" && (
-            <motion.div key="intro" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="absolute inset-0">
-              <IntroPage />
-            </motion.div>
-          )}
-          {currentScreen === "auth" && (
-            <motion.div key="auth" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="absolute inset-0">
-              <AuthPage />
-            </motion.div>
-          )}
-          {currentScreen === "dashboard" && (
-            <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="absolute inset-0">
-              <DashboardPage />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Invisible drag region for Intro/Auth pages */}
+        {currentScreen !== "dashboard" && <div className="absolute top-0 left-0 right-0 h-8 z-50" style={{ WebkitAppRegion: "drag", pointerEvents: "none" } as React.CSSProperties} />}
+
+        <div className="h-full w-full relative">
+          <AnimatePresence mode="wait">
+            {currentScreen === "intro" && (
+              <motion.div key="intro" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="absolute inset-0">
+                <IntroPage />
+              </motion.div>
+            )}
+            {currentScreen === "auth" && (
+              <motion.div key="auth" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="absolute inset-0">
+                <AuthPage />
+              </motion.div>
+            )}
+            {currentScreen === "dashboard" && (
+              <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="absolute inset-0">
+                <DashboardPage />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }

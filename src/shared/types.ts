@@ -9,6 +9,7 @@ export interface UserSettings {
   selectedExchange: "binance" | "bybit";
   tradingMode: "spot" | "futures";
   riskProfile: RiskProfile;
+  engineConfig: EngineConfig;
   agentModeEnabled: boolean;
   themePreference: "dark" | "light";
   hasClaudeKey: boolean;
@@ -22,12 +23,40 @@ export interface RiskProfile {
   maxLeverage: number;
 }
 
+export interface EngineConfig {
+  tradingSymbol: string;
+  autoPairSelection: boolean;
+  loopIntervalSec: number;
+  candleTimeframe: "1m" | "5m" | "15m";
+  maxSlippagePct: number;
+  tradeCooldownSec: number;
+  aiRetryCount: number;
+  aiModel: string;
+  maxConsecutiveLosses: number;
+  maxDrawdownPct: number;
+  volatilityThresholdPct: number;
+  spreadThresholdPct: number;
+  wsReconnectRetries: number;
+  enableEMA: boolean;
+  enableBollingerBands: boolean;
+}
+
 // ─── Portfolio ─────────────────────────────────────────
 export interface PortfolioSnapshot {
   totalBalance: number;
   availableBalance: number;
   dailyPnl: number;
   weeklyPnl: number;
+}
+
+// ─── Candles ──────────────────────────────────────────
+export interface CandleBar {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  timestamp: number;
 }
 
 // ─── Positions & Trades ───────────────────────────────
@@ -79,7 +108,12 @@ export interface AIPromptData {
   indicators: {
     rsi: number;
     macd: { line: number; signal: number; histogram: number };
+    ema?: { ema12: number; ema26: number };
+    bollingerBands?: { upper: number; middle: number; lower: number };
   };
+  recentCandles: CandleBar[];
+  recentTradeOutcomes: Array<{ side: string; pnl: number; reason: string }>;
+  spread: number;
   portfolio: PortfolioSnapshot;
   openPositions: Position[];
   riskProfile: RiskProfile;
@@ -103,6 +137,8 @@ export interface RiskContext {
   peakBalance: number;
   riskProfile: RiskProfile;
   tradingMode: "spot" | "futures";
+  intendedQuantity: number;
+  maxSlippagePct: number;
 }
 
 // ─── Safety ────────────────────────────────────────────
@@ -146,6 +182,16 @@ export interface OrderResult {
 export interface ExchangeKeys {
   apiKey: string;
   apiSecret: string;
+}
+
+// ─── Notifications ────────────────────────────────────
+export interface AppNotification {
+  id: string;
+  type: "trade" | "risk" | "system" | "ai";
+  title: string;
+  message: string;
+  read: boolean;
+  timestamp: string;
 }
 
 // ─── Logs ──────────────────────────────────────────────

@@ -68,20 +68,40 @@ export class BybitService {
   async placeMarketOrder(symbol: string, side: "BUY" | "SELL", quantity: number): Promise<OrderResult> {
     if (!this.rest) throw new Error("Bybit not initialized");
 
+    const category = this.getCategory();
     const { result } = await this.rest.submitOrder({
-      category: this.getCategory(),
+      category,
       symbol,
       side: side === "BUY" ? "Buy" : "Sell",
       orderType: "Market",
       qty: quantity.toString(),
     });
 
+    const orderId = result.orderId;
+
+    // Attempt to fetch the actual execution price from order history
+    let fillPrice = 0;
+    try {
+      const { result: historyResult } = await this.rest.getHistoricOrders({
+        category,
+        symbol,
+        orderId,
+        limit: 1,
+      });
+      const order = historyResult.list?.[0];
+      if (order && parseFloat(order.avgPrice) > 0) {
+        fillPrice = parseFloat(order.avgPrice);
+      }
+    } catch (err: unknown) {
+      logger.warn("SYSTEM", `Bybit: failed to fetch fill price for order ${orderId}, returning 0`);
+    }
+
     return {
-      orderId: result.orderId,
+      orderId,
       symbol,
       side,
       quantity,
-      price: 0,
+      price: fillPrice,
       status: "FILLED",
     };
   }
@@ -116,7 +136,31 @@ export class BybitService {
     }
   }
 
-  startTickerStream(symbol: string, callback: (tick: MarketTick) => void): void {
+  /** Fetch the current bid/ask spread as a percentage for the given symbol. */
+  async getSpread(symbol: string): Promise<number> {
+    if (!this.rest) throw new Error("Bybit not initialized");
+
+    const category = this.getCategory();
+    const { result } = await this.rest.getOrderbook({ category, symbol, limit: 1 });
+    const bid = result.b?.[0]?.[0] ? parseFloat(result.b[0][0]) : 0;
+    const ask = result.a?.[0]?.[0] ? parseFloat(result.a[0][0]) : 0;
+    if (bid <= 0 || ask <= 0) return 0;
+    const mid = (ask + bid) / 2;
+    return ((ask - bid) / mid) * 100;
+  }
+
+  /** Fetch all USDT trading pairs from the exchange. */
+  async getSymbols(): Promise<string[]> {
+    if (!this.rest) throw new Error("Bybit not initialized");
+    const category = this.getCategory();
+    const { result } = await this.rest.getInstrumentsInfo({ category, limit: 1000 });
+    return (result.list ?? [])
+      .filter((i: { status: string; quoteCoin: string }) => i.status === "Trading" && i.quoteCoin === "USDT")
+      .map((i: { symbol: string }) => i.symbol)
+      .sort();
+  }
+
+  startTickerStream(symbol: string, callback: (tick: MarketTick) => void, _maxRetries?: number): void {
     this.stopTickerStream();
 
     this.wsClient = new WebsocketClient({

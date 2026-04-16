@@ -1,10 +1,13 @@
 import { logger } from "./loggerService.js";
 import { saveSafetyState, getSafetyState } from "../main/sessionManager.js";
-import { ENGINE } from "../shared/constants.js";
+import { ENGINE_DEFAULTS } from "../shared/constants.js";
 import type { SafetyState } from "../shared/types.js";
 
 class SafetyService {
   private state: SafetyState;
+  private maxConsecutiveLosses: number = ENGINE_DEFAULTS.maxConsecutiveLosses;
+  private maxDrawdownPct: number = ENGINE_DEFAULTS.maxDrawdownPct;
+  private onFreezeCallback: ((reason: SafetyState["frozenReason"]) => void) | null = null;
 
   constructor() {
     const persisted = getSafetyState();
@@ -15,6 +18,15 @@ class SafetyService {
       peakBalance: persisted.peakBalance,
       emergencyShutdown: persisted.emergencyShutdown,
     };
+  }
+
+  setOnFreezeCallback(cb: (reason: SafetyState["frozenReason"]) => void): void {
+    this.onFreezeCallback = cb;
+  }
+
+  updateConfig(config: { maxConsecutiveLosses: number; maxDrawdownPct: number }): void {
+    this.maxConsecutiveLosses = config.maxConsecutiveLosses;
+    this.maxDrawdownPct = config.maxDrawdownPct;
   }
 
   getState(): SafetyState {
@@ -33,9 +45,9 @@ class SafetyService {
   recordLoss(): void {
     this.state.consecutiveLosses += 1;
 
-    if (this.state.consecutiveLosses >= ENGINE.MAX_CONSECUTIVE_LOSSES) {
+    if (this.state.consecutiveLosses >= this.maxConsecutiveLosses) {
       this.freeze("CONSECUTIVE_LOSSES");
-      logger.warn("SAFETY", `Agent frozen: ${ENGINE.MAX_CONSECUTIVE_LOSSES} consecutive losses`, {
+      logger.warn("SAFETY", `Agent frozen: ${this.maxConsecutiveLosses} consecutive losses`, {
         consecutiveLosses: this.state.consecutiveLosses,
       });
     }
@@ -54,9 +66,9 @@ class SafetyService {
     if (this.state.peakBalance <= 0) return true;
 
     const drawdownPct = ((this.state.peakBalance - currentBalance) / this.state.peakBalance) * 100;
-    if (drawdownPct >= ENGINE.MAX_DRAWDOWN_PCT) {
+    if (drawdownPct >= this.maxDrawdownPct) {
       this.freeze("DRAWDOWN");
-      logger.error("SAFETY", `Agent frozen: drawdown ${drawdownPct.toFixed(1)}% exceeds ${ENGINE.MAX_DRAWDOWN_PCT}%`, {
+      logger.error("SAFETY", `Agent frozen: drawdown ${drawdownPct.toFixed(1)}% exceeds ${this.maxDrawdownPct}%`, {
         peakBalance: this.state.peakBalance,
         currentBalance,
         drawdownPct,
@@ -75,6 +87,7 @@ class SafetyService {
     this.state.frozen = true;
     this.state.frozenReason = reason;
     this.persist();
+    this.onFreezeCallback?.(reason);
   }
 
   activateKillSwitch(): void {

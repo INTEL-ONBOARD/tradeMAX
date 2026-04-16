@@ -40,4 +40,7 @@ const tradeSchema = new Schema<ITrade>(
   { timestamps: true }
 );
 
+tradeSchema.index({ userId: 1, status: 1, closedAt: -1 });
+tradeSchema.index({ userId: 1, status: 1 });
+
 export const TradeModel = mongoose.model<ITrade>("Trade", tradeSchema);

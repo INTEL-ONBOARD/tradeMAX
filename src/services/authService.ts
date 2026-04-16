@@ -2,9 +2,9 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { User, type IUser } from "../db/models/User.js";
 import { registerSchema, loginSchema } from "../shared/validators.js";
-import { encrypt } from "./encryptionService.js";
+import { encrypt, generateUserSalt } from "./encryptionService.js";
 import type { UserSession, UserSettings } from "../shared/types.js";
-import { RISK_DEFAULTS } from "../shared/constants.js";
+import { RISK_DEFAULTS, ENGINE_DEFAULTS } from "../shared/constants.js";
 
 const SALT_ROUNDS = 12;
 const JWT_EXPIRY = "24h";
@@ -24,6 +24,7 @@ function toSettings(user: IUser): UserSettings {
     selectedExchange: user.selectedExchange,
     tradingMode: user.tradingMode,
     riskProfile: user.riskProfile,
+    engineConfig: user.engineConfig,
     agentModeEnabled: user.agentModeEnabled,
     themePreference: user.themePreference,
     hasClaudeKey: !!user.claudeApiKey,
@@ -42,7 +43,9 @@ export async function register(data: unknown): Promise<{ session: UserSession; t
     name: parsed.name,
     email: parsed.email,
     password: hashedPassword,
+    encryptionSalt: generateUserSalt(),
     riskProfile: { ...RISK_DEFAULTS },
+    engineConfig: { ...ENGINE_DEFAULTS },
   });
 
   const token = jwt.sign({ userId: user._id.toString() }, getJwtSecret(), { expiresIn: JWT_EXPIRY });
@@ -76,8 +79,11 @@ export async function restoreSession(token: string): Promise<{ session: UserSess
 }
 
 export async function saveApiKeys(userId: string, exchange: "binance" | "bybit", apiKey: string, apiSecret: string): Promise<void> {
-  const encryptedKey = encrypt(apiKey);
-  const encryptedSecret = encrypt(apiSecret);
+  const user = await User.findById(userId);
+  if (!user) throw new Error("USER_NOT_FOUND");
+  const userSalt = user.encryptionSalt || undefined;
+  const encryptedKey = encrypt(apiKey, userSalt);
+  const encryptedSecret = encrypt(apiSecret, userSalt);
 
   await User.findByIdAndUpdate(userId, {
     [`exchangeKeys.${exchange}.apiKey`]: encryptedKey,
@@ -98,6 +104,9 @@ export async function updateSettings(userId: string, updates: Record<string, unk
   if (patch.riskProfile) {
     Object.assign(user.riskProfile, patch.riskProfile);
   }
+  if (patch.engineConfig) {
+    Object.assign(user.engineConfig, patch.engineConfig);
+  }
 
   await user.save();
 
@@ -111,7 +120,10 @@ export async function getSettings(userId: string): Promise<UserSettings> {
 }
 
 export async function saveClaudeKey(userId: string, claudeApiKey: string): Promise<void> {
-  const encryptedKey = encrypt(claudeApiKey);
+  const user = await User.findById(userId);
+  if (!user) throw new Error("USER_NOT_FOUND");
+  const userSalt = user.encryptionSalt || undefined;
+  const encryptedKey = encrypt(claudeApiKey, userSalt);
   await User.findByIdAndUpdate(userId, { claudeApiKey: encryptedKey });
 }
 

@@ -9,6 +9,7 @@ import type {
   AgentStatus,
   LogEntry,
   MarketTick,
+  AppNotification,
 } from "../../shared/types.js";
 
 interface AppState {
@@ -27,6 +28,7 @@ interface AppState {
   agentStatus: AgentStatus;
   logs: LogEntry[];
   marketTick: MarketTick | null;
+  notifications: AppNotification[];
 
   setScreen: (screen: AppState["currentScreen"]) => void;
   setAuthMode: (mode: AppState["authMode"]) => void;
@@ -44,6 +46,11 @@ interface AppState {
   addLog: (l: LogEntry) => void;
   setLogs: (l: LogEntry[]) => void;
   setMarketTick: (t: MarketTick) => void;
+
+  addNotification: (n: AppNotification) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+  clearNotifications: () => void;
 
   reset: () => void;
 }
@@ -66,6 +73,7 @@ export const useAppStore = create<AppState>((set) => ({
   agentStatus: { running: false, frozen: false },
   logs: [],
   marketTick: null,
+  notifications: [],
 
   setScreen: (screen) => set({ currentScreen: screen }),
   setAuthMode: (mode) => set({ authMode: mode }),
@@ -96,6 +104,20 @@ export const useAppStore = create<AppState>((set) => ({
   setLogs: (logs) => set({ logs }),
   setMarketTick: (t) => set({ marketTick: t }),
 
+  addNotification: (n) =>
+    set((s) => ({ notifications: [n, ...s.notifications].slice(0, 50) })),
+  markNotificationRead: (id) =>
+    set((s) => ({
+      notifications: s.notifications.map((n) =>
+        n.id === id ? { ...n, read: true } : n
+      ),
+    })),
+  markAllNotificationsRead: () =>
+    set((s) => ({
+      notifications: s.notifications.map((n) => ({ ...n, read: true })),
+    })),
+  clearNotifications: () => set({ notifications: [] }),
+
   reset: () =>
     set({
       currentScreen: "intro",
@@ -108,5 +130,6 @@ export const useAppStore = create<AppState>((set) => ({
       agentStatus: { running: false, frozen: false },
       logs: [],
       marketTick: null,
+      notifications: [],
     }),
 }));

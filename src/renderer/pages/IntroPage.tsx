@@ -1,131 +1,93 @@
 import { motion } from "framer-motion";
 import { useAppStore } from "../store/appStore";
-import { TrendingUp } from "../components/icons";
+import { TrendingUp, ArrowRight } from "../components/icons";
 
 export function IntroPage() {
   const setScreen = useAppStore((s) => s.setScreen);
-
-  const metricsData = [
-    { label: "Today's Profit", value: "+$8,240", trend: "up" as const, subtext: "↑ 12% from yesterday" },
-    { label: "Win Rate", value: "87%", trend: "up" as const, subtext: "124 trades this week" },
-    { label: "Active Positions", value: "3", trend: "neutral" as const, subtext: "BTC, ETH, SOL" },
-    { label: "Avg Monthly Return", value: "18.5%", trend: "up" as const, subtext: "Risk-adjusted performance" },
-  ];
+  const setAuthMode = useAppStore((s) => s.setAuthMode);
 
   return (
     <div
-      className="h-screen w-screen flex items-center justify-center overflow-hidden"
+      className="h-screen w-screen flex items-center justify-center overflow-hidden relative"
       style={{ background: "var(--bg-base)" }}
     >
-      {/* Animated gradient background */}
+      {/* Drag region */}
       <div
-        className="absolute inset-0 opacity-5 pointer-events-none"
-        style={{
-          background: "radial-gradient(circle at 50% 50%, #EF4444 0%, transparent 70%)",
-          animation: "gradientShift 15s ease infinite",
-        }}
+        className="absolute top-0 left-0 right-0 h-10 w-full z-50 pointer-events-none"
+        style={{ WebkitAppRegion: "drag", opacity: 0 } as React.CSSProperties}
       />
 
-      <div className="relative z-10 max-w-2xl w-full px-6 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
-        >
-          {/* Logo */}
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] }}
-            className="w-16 h-16 rounded-2xl bg-primary-600 flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_rgba(239,68,68,0.5)]"
-          >
-            <TrendingUp size={30} className="text-white" />
-          </motion.div>
+      {/* Animated background orbs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-[0.08] blur-[120px] orb-1"
+          style={{ background: "var(--color-loss)" }}
+        />
+        <div
+          className="absolute top-[20%] right-[15%] w-[350px] h-[350px] rounded-full opacity-[0.05] blur-[100px] orb-2"
+          style={{ background: "#6366F1" }}
+        />
+        <div
+          className="absolute bottom-[20%] left-[20%] w-[300px] h-[300px] rounded-full opacity-[0.04] blur-[80px] orb-3"
+          style={{ background: "var(--color-profit)" }}
+        />
+      </div>
 
-          {/* Heading */}
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.6 }}
-            className="text-5xl md:text-6xl font-extrabold tracking-tight text-[var(--text-primary)] mb-2"
-          >
-            Trade<span className="text-primary-500">MAX</span>
-          </motion.h1>
+      {/* Grid */}
+      <div className="absolute inset-0 grid-bg opacity-20 pointer-events-none" />
 
-          {/* Tagline */}
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.6 }}
-            className="text-lg text-[var(--text-secondary)] max-w-md mx-auto"
-          >
-            Autonomous AI-powered crypto trading agent with hard safety controls
-          </motion.p>
-        </motion.div>
+      {/* Content */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.6 }}
+        className="relative z-10 flex flex-col items-center text-center max-w-md px-6"
+      >
+        {/* Logo */}
+        <div className="w-16 h-16 rounded-2xl gradient-red flex items-center justify-center logo-glow mb-6">
+          <TrendingUp size={28} className="text-white" />
+        </div>
 
-        {/* Metrics Grid */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.6 }}
-          className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12"
-        >
-          {metricsData.map((metric, idx) => (
-            <motion.div
-              key={metric.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 + idx * 0.05, duration: 0.5 }}
-              className="glass-card glass-card-dark p-4"
-            >
-              <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide mb-1">
-                {metric.label}
-              </p>
-              <p className="text-3xl font-bold text-primary-500 mb-1">
-                {metric.value}
-              </p>
-              {metric.subtext && (
-                <p className="text-xs text-[var(--text-secondary)]">
-                  {metric.subtext}
-                </p>
-              )}
-            </motion.div>
-          ))}
-        </motion.div>
+        {/* Brand */}
+        <h1 className="text-5xl font-extrabold tracking-tight text-[var(--text-primary)] mb-3">
+          trade<span className="text-[var(--color-loss)]">MAX</span>
+        </h1>
 
-        {/* Feature Pills */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7, duration: 0.6 }}
-          className="flex flex-wrap justify-center gap-2 mb-12"
-        >
-          {["Claude AI Decisions", "Risk Engine", "Safety Controls", "24/7 Trading"].map((feature) => (
-            <span
-              key={feature}
-              className="glass-badge text-[var(--text-secondary)]"
-            >
-              {feature}
-            </span>
-          ))}
-        </motion.div>
+        <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-10 max-w-xs">
+          AI-powered autonomous crypto trading.
+          <br />
+          Secure. Fast. Intelligent.
+        </p>
 
-        {/* CTA Button */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8, duration: 0.5 }}
-          className="text-center"
-        >
-          <button
-            onClick={() => setScreen("auth")}
-            className="btn-primary px-8 py-3 text-lg font-600 hover:scale-105 active:scale-95 transition-transform"
+        {/* CTA buttons */}
+        <div className="w-full max-w-xs flex flex-col gap-3">
+          <motion.button
+            onClick={() => {
+              setAuthMode("register");
+              setScreen("auth");
+            }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="w-full py-3.5 rounded-xl gradient-red text-white font-semibold text-sm flex items-center justify-center gap-2 cta-glow"
           >
             Get Started
-          </button>
-        </motion.div>
-      </div>
+            <ArrowRight size={14} />
+          </motion.button>
+
+          <motion.button
+            onClick={() => {
+              setAuthMode("login");
+              setScreen("auth");
+            }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="w-full py-3 rounded-xl border border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium text-sm transition-colors"
+            style={{ background: "var(--bg-elevated)" }}
+          >
+            I already have an account
+          </motion.button>
+        </div>
+      </motion.div>
     </div>
   );
 }

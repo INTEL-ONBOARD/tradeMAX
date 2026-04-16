@@ -7,7 +7,8 @@ const ALLOWED_INVOKE_CHANNELS = [
   "portfolio:get", "positions:get", "trades:history",
   "ai:last-decision",
   "agent:start", "agent:stop", "agent:kill-switch", "agent:reset-freeze",
-  "logs:recent"
+  "logs:recent",
+  "exchange:pairs"
 ];
 
 const ALLOWED_STREAM_CHANNELS = [

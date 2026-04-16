@@ -1,14 +1,18 @@
 import { useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
+import { AgentConfigModal } from "./AgentConfigModal";
+import { Sliders } from "./icons";
 
 export function AgentControlPanel() {
   const agentStatus = useAppStore((s) => s.agentStatus);
   const [confirmKill, setConfirmKill] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
 
-  // We hardcode BTCUSDT for now in the massive dial view, or pull from settings if needed
-  const symbol = "BTCUSDT";
+  const settings = useAppStore((s) => s.settings);
+  const symbol = settings?.engineConfig?.tradingSymbol || "BTCUSDT";
+  const autoPair = settings?.engineConfig?.autoPairSelection || false;
 
   const handleToggleAgent = async () => {
     setToggling(true);
@@ -59,7 +63,22 @@ export function AgentControlPanel() {
         </span>
       </div>
 
-      <h2 className="text-xl font-medium text-[var(--text-primary)] mb-8">TradeMAX Agent</h2>
+      <h2 className="text-xl font-medium text-[var(--text-primary)] mb-1">TradeMAX Agent</h2>
+
+      {/* Pair badge + Config button */}
+      <div className="flex items-center gap-2 mb-6">
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--bg-inset)] text-[var(--text-secondary)] border border-[var(--border)]">
+          {autoPair ? "AI AUTO" : symbol}
+        </span>
+        <button
+          onClick={() => setConfigOpen(true)}
+          disabled={isRunning}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] border border-transparent hover:border-[var(--border)] transition-all disabled:opacity-40 disabled:pointer-events-none"
+        >
+          <Sliders size={11} />
+          Configure
+        </button>
+      </div>
 
       {/* Main Action Button */}
       <button
@@ -88,6 +107,8 @@ export function AgentControlPanel() {
       <p className="text-[11px] text-[var(--text-tertiary)] mt-8 max-w-[280px] text-center">
         Stop unnecessary apps/services for a better trading experience.
       </p>
+
+      <AgentConfigModal isOpen={configOpen} onClose={() => setConfigOpen(false)} />
     </div>
   );
 }
