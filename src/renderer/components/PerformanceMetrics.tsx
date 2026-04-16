@@ -5,7 +5,6 @@ interface MetricsData {
   value: string | number;
   trend?: "up" | "down" | "neutral";
   subtext?: string;
-  color?: "green" | "red" | "neutral";
 }
 
 interface PerformanceMetricsProps {
@@ -35,7 +34,7 @@ export function PerformanceMetrics({
       <div className="space-y-3">
         {metrics.map((metric, idx) => (
           <motion.div
-            key={metric.label}
+            key={`${metric.label}-${idx}`}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.4, delay: idx * 0.1 }}
@@ -47,13 +46,10 @@ export function PerformanceMetrics({
               </span>
               {metric.trend && (
                 <span
-                  className={`text-xs font-600 ${
-                    metric.trend === "up"
-                      ? "text-green-500"
-                      : metric.trend === "down"
-                      ? "text-red-500"
-                      : "text-gray-500"
-                  }`}
+                  className="text-xs font-600"
+                  style={{
+                    color: metric.trend === "up" ? "var(--trend-up)" : metric.trend === "down" ? "var(--trend-down)" : "var(--trend-neutral)"
+                  }}
                 >
                   {metric.trend === "up" ? "↑" : metric.trend === "down" ? "↓" : "→"}
                 </span>

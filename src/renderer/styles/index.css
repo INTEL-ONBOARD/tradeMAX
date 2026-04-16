@@ -49,6 +49,9 @@
   --color-info-border:  rgba(239, 68, 68, 0.25);
 
   --sidebar-width: 68px;
+  --trend-up: #10B981;
+  --trend-down: #F43F5E;
+  --trend-neutral: #6B7280;
   --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.2);
   --shadow-glass-hover: 0 12px 48px rgba(0, 0, 0, 0.3);
 }
@@ -90,6 +93,9 @@
   --color-info-border:  rgba(220, 38, 38, 0.2);
 
   --sidebar-width: 68px;
+  --trend-up: #059669;
+  --trend-down: #DC2626;
+  --trend-neutral: #6B7280;
   --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.08);
   --shadow-glass-hover: 0 12px 48px rgba(0, 0, 0, 0.12);
 }
