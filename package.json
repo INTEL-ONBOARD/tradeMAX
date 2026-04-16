@@ -48,7 +48,7 @@
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^34.5.5",
+    "electron": "^34.5.8",
     "electron-builder": "^25.1.8",
     "jest": "^30.3.0",
     "nodemon": "^3.1.10",

@@ -1,9 +1,5 @@
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 import dotenv from "dotenv";
 import { connectMongo } from "../db/mongoConnection.js";
 import { registerIpcHandlers, setMainWindow, setCurrentUserId } from "./ipc.js";
