@@ -36,6 +36,46 @@ export default function App() {
     }
   }, []);
 
+  // Restore session on mount via IPC invoke (pull-based, no race condition)
+  useEffect(() => {
+    const api = window.api;
+    if (!api) return;
+
+    api.invoke(IPC.AUTH_SESSION).then((result: any) => {
+      if (!result) return;
+      const data = result as { session: UserSession; settings: UserSettings };
+      store.setUser(data.session);
+      store.setSettings(data.settings);
+      const savedPref = localStorage.getItem("theme-preference") as "dark" | "light" | null;
+      const theme = savedPref ?? data.settings.themePreference ?? "light";
+      store.setTheme(theme);
+      store.setScreen("dashboard");
+
+      if (data.settings.hasBinanceKeys || data.settings.hasBybitKeys) {
+        api.invoke(IPC.PORTFOLIO_GET).then((p: any) => {
+          if (p) store.setPortfolio(p as PortfolioSnapshot);
+        }).catch(() => {});
+        api.invoke(IPC.POSITIONS_GET).then((pos: any) => {
+          store.setPositions(pos as Position[]);
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Fetch historical data when entering dashboard (covers both login and session restore)
+  useEffect(() => {
+    const api = window.api;
+    if (!api || currentScreen !== "dashboard") return;
+
+    api.invoke(IPC.TRADES_HISTORY, { limit: 50 }).then((data: any) => {
+      if (data) store.setTrades(data as Trade[]);
+    }).catch(() => {});
+    api.invoke(IPC.LOGS_RECENT, { limit: 100 }).then((data: any) => {
+      if (data) store.setLogs(data as LogEntry[]);
+    }).catch(() => {});
+  }, [currentScreen]);
+
+  // Stream listeners for real-time updates
   useEffect(() => {
     const api = window.api;
     if (!api) return;
@@ -49,28 +89,6 @@ export default function App() {
     unsubs.push(api.on(STREAM.AGENT_STATUS, (d: any) => store.setAgentStatus(d as AgentStatus)));
     unsubs.push(api.on(STREAM.LOG, (d: any) => store.addLog(d as LogEntry)));
     unsubs.push(api.on(STREAM.NOTIFICATION, (d: any) => store.addNotification(d as AppNotification)));
-
-    unsubs.push(
-      api.on("session:restored", (d: any) => {
-        const data = d as { session: UserSession; settings: UserSettings };
-        store.setUser(data.session);
-        store.setSettings(data.settings);
-        const savedPref = localStorage.getItem("theme-preference") as "dark" | "light" | null;
-        const theme = savedPref ?? data.settings.themePreference ?? "light";
-        store.setTheme(theme);
-        store.setScreen("dashboard");
-
-        // Auto-fetch portfolio and positions if exchange keys are configured
-        if (data.settings.hasBinanceKeys || data.settings.hasBybitKeys) {
-          api.invoke(IPC.PORTFOLIO_GET).then((p: any) => {
-            if (p) store.setPortfolio(p as PortfolioSnapshot);
-          }).catch(() => {});
-          api.invoke(IPC.POSITIONS_GET).then((pos: any) => {
-            store.setPositions(pos as Position[]);
-          }).catch(() => {});
-        }
-      })
-    );
 
     return () => unsubs.forEach((fn) => fn());
   }, []);

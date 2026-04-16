@@ -2,8 +2,7 @@ import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "./Card";
 import { useAppStore } from "../store/appStore";
-import { IPC } from "../../shared/constants";
-import type { LogEntry } from "../../shared/types";
+
 import { Terminal, AlertCircle, Info, AlertTriangle } from "./icons";
 
 const LevelIcon = ({ level }: { level: string }) => {
@@ -24,14 +23,7 @@ const categoryStyle: Record<string, string> = {
 
 export function LiveLogPanel() {
   const logs = useAppStore((s) => s.logs);
-  const setLogs = useAppStore((s) => s.setLogs);
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    window.api.invoke(IPC.LOGS_RECENT, { limit: 100 }).then((data) => {
-      setLogs(data as LogEntry[]);
-    });
-  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
