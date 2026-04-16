@@ -3,7 +3,7 @@ import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
 import type { PortfolioSnapshot, Position } from "../../shared/types";
 
-const POLL_INTERVAL_MS = 20_000;
+const POLL_INTERVAL_MS = 5_000;
 
 export function useIdlePolling() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
