@@ -4,44 +4,7 @@ import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
 import type { UserSession, UserSettings } from "../../shared/types";
 import { TrendingUp, Mail, Lock, User, ArrowLeft, AlertCircle, Loader2 } from "../components/icons";
-
-function InputField({
-  icon: Icon, type = "text", placeholder, value, onChange, required, minLength, autoComplete,
-}: {
-  icon: React.ElementType;
-  type?: string;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-  required?: boolean;
-  minLength?: number;
-  autoComplete?: string;
-}) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <div
-      className={`flex items-center gap-3 rounded-lg border transition-all px-3.5 py-3 ${
-        focused
-          ? "border-[var(--border-focus)] shadow-[0_0_0_3px_rgba(239,68,68,0.1)] bg-[var(--bg-inset)]"
-          : "border-[var(--border)] bg-[var(--bg-inset)] hover:border-[var(--border-strong)]"
-      }`}
-    >
-      <Icon size={16} className={`shrink-0 transition-colors ${focused ? "text-primary-400" : "text-[var(--text-tertiary)]"}`} />
-      <input
-        type={type}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        required={required}
-        minLength={minLength}
-        autoComplete={autoComplete}
-        className="flex-1 bg-transparent outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)]"
-      />
-    </div>
-  );
-}
+import { InputField } from "../components/InputField";
 
 export function AuthPage() {
   const authMode = useAppStore((s) => s.authMode);
