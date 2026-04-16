@@ -6,6 +6,8 @@ import { Mail, Lock, User, AlertCircle, Loader2, Chrome } from "./icons";
 import { InputField } from "./InputField";
 import { PasswordStrengthBar } from "./PasswordStrengthBar";
 import { validateEmail, validatePassword, validateName } from "./PasswordStrengthUtils";
+import { SplitScreenLayout } from "./SplitScreenLayout";
+import { SuccessStories } from "./SuccessStories";
 
 interface RegisterFormProps {
   onLoginClick: () => void;
@@ -97,156 +99,195 @@ export function RegisterForm({ onLoginClick, onSuccess }: RegisterFormProps) {
     }
   };
 
+  const stories = [
+    {
+      id: "story-1",
+      quote: "TradeMAX helped me automate my crypto portfolio. +$25K in 3 months!",
+      author: "Sarah M.",
+      result: "+$25K in 3 months",
+      initials: "SM",
+    },
+    {
+      id: "story-2",
+      quote: "The safety controls give me peace of mind. I don't worry about my capital anymore.",
+      author: "Alex J.",
+      result: "Risk-adjusted 18% return",
+      initials: "AJ",
+    },
+    {
+      id: "story-3",
+      quote: "24/7 trading that actually works. This is the future of crypto.",
+      author: "Jordan K.",
+      result: "+$15K in 2 months",
+      initials: "JK",
+    },
+  ];
+
   return (
-    <motion.div
-      key="register-form"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.4 }}
-      className="w-full max-w-[420px]"
-    >
-
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-[var(--text-primary)] leading-tight">
-          Create account
-        </h2>
-        <p className="text-sm text-[var(--text-secondary)] mt-1">
-          Set up TradeMAX to start autonomous trading
-        </p>
-      </div>
-
-      {/* Error Banner */}
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-4 flex items-start gap-2 p-3 rounded-lg border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)]"
-        >
-          <AlertCircle size={14} className="text-[var(--color-loss)] shrink-0 mt-0.5" />
-          <p className="text-xs text-[var(--color-loss)]">{error}</p>
-        </motion.div>
-      )}
-
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-        >
-          <InputField
-            icon={User}
-            placeholder="Full name"
-            value={name}
-            onChange={handleNameChange}
-            error={errors.name}
-            isDirty={dirtyFields.name}
-            autoComplete="name"
-          />
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-        >
-          <InputField
-            icon={Mail}
-            type="email"
-            placeholder="Email address"
-            value={email}
-            onChange={handleEmailChange}
-            error={errors.email}
-            isDirty={dirtyFields.email}
-            autoComplete="email"
-          />
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.3 }}
-        >
-          <InputField
-            icon={Lock}
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={handlePasswordChange}
-            error={errors.password}
-            isDirty={dirtyFields.password}
-            autoComplete="new-password"
-          />
-          {dirtyFields.password && (
-            <PasswordStrengthBar password={password} />
-          )}
-        </motion.div>
-
-        {/* Submit Button */}
-        <motion.button
-          type="submit"
-          disabled={loading || !isFormValid}
-          className="btn-primary w-full py-3 mt-6"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.4 }}
-          whileHover={!loading ? { scale: 1.02 } : {}}
-          whileTap={!loading ? { scale: 0.98 } : {}}
-        >
-          {loading ? (
-            <>
-              <Loader2 size={15} className="animate-spin" /> Creating account...
-            </>
-          ) : (
-            "Create Account"
-          )}
-        </motion.button>
-      </form>
-
-      {/* Divider */}
-      <div className="relative my-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-[var(--border)]"></div>
+    <SplitScreenLayout
+      leftContent={
+        <div>
+          <h2 className="text-3xl font-bold text-[var(--text-primary)] mb-2">
+            Join 5,000+ Traders
+          </h2>
+          <p className="text-[var(--text-secondary)] mb-8">
+            Real results from real users
+          </p>
+          <SuccessStories stories={stories} />
         </div>
-        <div className="relative flex justify-center text-xs">
-          <span className="px-2 bg-[var(--bg-base)] text-[var(--text-tertiary)]">
-            OR
-          </span>
-        </div>
-      </div>
-
-      {/* Google OAuth Button */}
-      <motion.button
-        type="button"
-        onClick={handleGoogleAuth}
-        disabled={loading}
-        className="btn-ghost w-full py-3 flex items-center justify-center gap-2"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.5 }}
-        whileHover={!loading ? { scale: 1.02 } : {}}
-        whileTap={!loading ? { scale: 0.98 } : {}}
-      >
-        <Chrome size={14} /> Continue with Google
-      </motion.button>
-
-      {/* Login Link */}
-      <motion.p
-        className="text-sm text-[var(--text-secondary)] text-center mt-6"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.6 }}
-      >
-        Already have an account?{" "}
-        <button
-          type="button"
-          onClick={onLoginClick}
-          className="text-primary-600 hover:text-primary-500 font-600 transition-colors hover:underline"
+      }
+      rightContent={
+        <motion.div
+          key="register-form"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.4 }}
+          className="w-full max-w-[420px] mx-auto"
         >
-          Login
-        </button>
-      </motion.p>
-    </motion.div>
+
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-[var(--text-primary)] leading-tight">
+              Create account
+            </h2>
+            <p className="text-sm text-[var(--text-secondary)] mt-1">
+              Set up TradeMAX to start autonomous trading
+            </p>
+          </div>
+
+          {/* Error Banner */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 flex items-start gap-2 p-3 rounded-lg border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)]"
+            >
+              <AlertCircle size={14} className="text-[var(--color-loss)] shrink-0 mt-0.5" />
+              <p className="text-xs text-[var(--color-loss)]">{error}</p>
+            </motion.div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              <InputField
+                icon={User}
+                placeholder="Full name"
+                value={name}
+                onChange={handleNameChange}
+                error={errors.name}
+                isDirty={dirtyFields.name}
+                autoComplete="name"
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+            >
+              <InputField
+                icon={Mail}
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={handleEmailChange}
+                error={errors.email}
+                isDirty={dirtyFields.email}
+                autoComplete="email"
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+            >
+              <InputField
+                icon={Lock}
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={handlePasswordChange}
+                error={errors.password}
+                isDirty={dirtyFields.password}
+                autoComplete="new-password"
+              />
+              {dirtyFields.password && (
+                <PasswordStrengthBar password={password} />
+              )}
+            </motion.div>
+
+            {/* Submit Button */}
+            <motion.button
+              type="submit"
+              disabled={loading || !isFormValid}
+              className="btn-primary w-full py-3 mt-6"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.4 }}
+              whileHover={!loading ? { scale: 1.02 } : {}}
+              whileTap={!loading ? { scale: 0.98 } : {}}
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" /> Creating account...
+                </>
+              ) : (
+                "Create Account"
+              )}
+            </motion.button>
+          </form>
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-[var(--border)]"></div>
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="px-2 bg-[var(--bg-base)] text-[var(--text-tertiary)]">
+                OR
+              </span>
+            </div>
+          </div>
+
+          {/* Google OAuth Button */}
+          <motion.button
+            type="button"
+            onClick={handleGoogleAuth}
+            disabled={loading}
+            className="btn-ghost w-full py-3 flex items-center justify-center gap-2"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.5 }}
+            whileHover={!loading ? { scale: 1.02 } : {}}
+            whileTap={!loading ? { scale: 0.98 } : {}}
+          >
+            <Chrome size={14} /> Continue with Google
+          </motion.button>
+
+          {/* Login Link */}
+          <motion.p
+            className="text-sm text-[var(--text-secondary)] text-center mt-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4, delay: 0.6 }}
+          >
+            Already have an account?{" "}
+            <button
+              type="button"
+              onClick={onLoginClick}
+              className="text-primary-600 hover:text-primary-500 font-600 transition-colors hover:underline"
+            >
+              Login
+            </button>
+          </motion.p>
+        </motion.div>
+      }
+    />
   );
 }
