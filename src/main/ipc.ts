@@ -1,10 +1,11 @@
-import { ipcMain, type BrowserWindow } from "electron";
+import { ipcMain, Notification, type BrowserWindow } from "electron";
 import { IPC, STREAM } from "../shared/constants.js";
 import { apiKeysSchema, claudeKeySchema, settingsUpdateSchema, agentStartSchema } from "../shared/validators.js";
 import * as auth from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
 import { tradeEngine } from "../services/tradeEngine.js";
 import { safetyService } from "../services/safetyService.js";
+import { alertService } from "../services/alertService.js";
 import { TradeModel } from "../db/models/Trade.js";
 import { LogModel } from "../db/models/Log.js";
 import { saveSession, clearSession } from "./sessionManager.js";
@@ -128,12 +129,54 @@ export function registerIpcHandlers(): void {
   // ─── Portfolio & Positions ───────────────────────────
   ipcMain.handle(IPC.PORTFOLIO_GET, async () => {
     if (!currentUserId) throw new Error("Not authenticated");
-    return null;
+
+    const user = await auth.getUserDoc(currentUserId);
+    if (user.selectedExchange === "paper") return null;
+
+    const keys = user.exchangeKeys[user.selectedExchange];
+    if (!keys.apiKey || !keys.apiSecret) return null;
+
+    const userSalt = user.encryptionSalt || undefined;
+    const exchange = createExchangeService(user.selectedExchange);
+
+    try {
+      await exchange.initialize(
+        { apiKey: decrypt(keys.apiKey, userSalt), apiSecret: decrypt(keys.apiSecret, userSalt) },
+        user.tradingMode,
+      );
+      return await exchange.getBalance();
+    } catch (err) {
+      await logger.warn("SYSTEM", `Portfolio fetch failed: ${err}`);
+      return null;
+    } finally {
+      exchange.destroy();
+    }
   });
 
   ipcMain.handle(IPC.POSITIONS_GET, async () => {
     if (!currentUserId) throw new Error("Not authenticated");
-    return [];
+
+    const user = await auth.getUserDoc(currentUserId);
+    if (user.selectedExchange === "paper") return [];
+
+    const keys = user.exchangeKeys[user.selectedExchange];
+    if (!keys.apiKey || !keys.apiSecret) return [];
+
+    const userSalt = user.encryptionSalt || undefined;
+    const exchange = createExchangeService(user.selectedExchange);
+
+    try {
+      await exchange.initialize(
+        { apiKey: decrypt(keys.apiKey, userSalt), apiSecret: decrypt(keys.apiSecret, userSalt) },
+        user.tradingMode,
+      );
+      return await exchange.getOpenPositions();
+    } catch (err) {
+      await logger.warn("SYSTEM", `Positions fetch failed: ${err}`);
+      return [];
+    } finally {
+      exchange.destroy();
+    }
   });
 
   // ─── Trades ──────────────────────────────────────────
@@ -218,15 +261,21 @@ export function registerIpcHandlers(): void {
 
     const user = await auth.getUserDoc(currentUserId);
     const selectedExchange = user.selectedExchange;
+
+    // Paper mode uses hardcoded pairs, no keys needed
+    if (selectedExchange === "paper") {
+      return {
+        configured: true,
+        pairs: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "DOTUSDT", "MATICUSDT", "LINKUSDT", "LTCUSDT"],
+      };
+    }
+
     const keys = user.exchangeKeys[selectedExchange];
     if (!keys.apiKey || !keys.apiSecret) {
       return { configured: false, pairs: [] };
     }
 
     try {
-      const { decrypt } = await import("../services/encryptionService.js");
-      const { createExchangeService } = await import("../services/exchangeFactory.js");
-
       const userSalt = user.encryptionSalt || undefined;
       const decryptedKey = decrypt(keys.apiKey, userSalt);
       const decryptedSecret = decrypt(keys.apiSecret, userSalt);
