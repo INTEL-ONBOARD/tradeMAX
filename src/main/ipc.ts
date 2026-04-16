@@ -12,6 +12,8 @@ import { saveSession, clearSession } from "./sessionManager.js";
 import { createExchangeService } from "../services/exchangeFactory.js";
 import { decrypt } from "../services/encryptionService.js";
 import { mapExchangeError } from "./exchangeErrors.js";
+import { accountWatcher } from "./accountWatcher.js";
+import { runBacktest } from "../services/backtestService.js";
 
 let currentUserId: string | null = null;
 
@@ -39,6 +41,12 @@ export function setMainWindow(window: BrowserWindow): void {
 
 export function registerIpcHandlers(): void {
 
+  // ─── Account Watcher (real-time balance/positions) ──
+  accountWatcher.setCallbacks({
+    onPortfolio: (snap) => send(STREAM.PORTFOLIO, snap),
+    onPositions: (positions) => send(STREAM.POSITIONS, positions),
+  });
+
   // ─── Auth ────────────────────────────────────────────
   ipcMain.handle(IPC.AUTH_REGISTER, async (_e, data) => {
     const result = await auth.register(data);
@@ -58,6 +66,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.AUTH_LOGOUT, async () => {
     if (tradeEngine.isRunning()) await tradeEngine.stop();
+    await accountWatcher.stop();
     setCurrentUserId(null);
     clearSession();
     await logger.info("AUTH", "User logged out");
@@ -96,6 +105,13 @@ export function registerIpcHandlers(): void {
         parsed.apiSecret,
       );
       await logger.info("SYSTEM", `API keys validated and saved for ${parsed.exchange}`);
+
+      // Start real-time account streaming if agent isn't running
+      if (!tradeEngine.isRunning()) {
+        await accountWatcher.stop();
+        await accountWatcher.start(currentUserId!);
+      }
+
       return { settings, portfolio };
     } catch (err) {
       const friendlyMessage = mapExchangeError(err);
@@ -232,21 +248,45 @@ export function registerIpcHandlers(): void {
       onAgentStatus: (status) => send(STREAM.AGENT_STATUS, status),
     });
 
+    // Wire alert service for in-app + native notifications
+    alertService.setCallback((alert) => {
+      send(STREAM.NOTIFICATION, {
+        id: Date.now().toString(),
+        type: alert.type,
+        title: alert.title,
+        message: alert.message,
+        read: false,
+        timestamp: new Date().toISOString(),
+      });
+      // Native OS notification for risk/system alerts only
+      if (alert.type === "risk" || alert.type === "system") {
+        new Notification({ title: alert.title, body: alert.message }).show();
+      }
+    });
+
+    // Stop account watcher — agent's own streaming takes over
+    await accountWatcher.stop();
+
     await tradeEngine.start(currentUserId, parsed.symbol);
     await auth.updateSettings(currentUserId, { agentModeEnabled: true });
   });
 
   ipcMain.handle(IPC.AGENT_STOP, async () => {
+    alertService.clearCallback();
     await tradeEngine.stop();
     if (currentUserId) {
       await auth.updateSettings(currentUserId, { agentModeEnabled: false });
+      // Resume real-time account watcher now that agent stopped
+      await accountWatcher.start(currentUserId);
     }
   });
 
   ipcMain.handle(IPC.AGENT_KILL_SWITCH, async () => {
+    alertService.clearCallback();
     await tradeEngine.killSwitch();
     if (currentUserId) {
       await auth.updateSettings(currentUserId, { agentModeEnabled: false });
+      await accountWatcher.start(currentUserId);
     }
   });
 
@@ -290,6 +330,39 @@ export function registerIpcHandlers(): void {
       await logger.error("SYSTEM", `Failed to fetch exchange pairs: ${err}`);
       return { configured: true, pairs: [] };
     }
+  });
+
+  // ─── Backtest ─────────────────────────────────────────
+  ipcMain.handle(IPC.BACKTEST_RUN, async (_e, data) => {
+    if (!currentUserId) throw new Error("Not authenticated");
+
+    const user = await auth.getUserDoc(currentUserId);
+    const config = data as {
+      symbol: string;
+      startDate: string;
+      endDate: string;
+      startingBalance: number;
+    };
+
+    const userSalt = user.encryptionSalt || undefined;
+    const claudeApiKey = user.claudeApiKey ? decrypt(user.claudeApiKey, userSalt) : undefined;
+
+    const result = await runBacktest(
+      {
+        symbol: config.symbol,
+        exchange: user.selectedExchange === "paper" ? "binance" : user.selectedExchange,
+        mode: user.tradingMode,
+        startDate: config.startDate,
+        endDate: config.endDate,
+        startingBalance: config.startingBalance,
+        riskProfile: user.riskProfile,
+        engineConfig: user.engineConfig,
+        claudeApiKey,
+      },
+      (progress) => send(STREAM.BACKTEST_PROGRESS, progress),
+    );
+
+    return result;
   });
 
   // ─── Logs ────────────────────────────────────────────

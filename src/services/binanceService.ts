@@ -17,6 +17,10 @@ export class BinanceService {
   private spot: AxiosInstance;
   private futures: AxiosInstance;
   private ws: WebSocket | null = null;
+  private accountWs: WebSocket | null = null;
+  private listenKey: string | null = null;
+  private listenKeyTimer: ReturnType<typeof setInterval> | null = null;
+  private accountReconnectAttempts = 0;
   private mode: "spot" | "futures" = "spot";
   private reconnectAttempts = 0;
   private maxReconnectRetries = 5;
@@ -36,6 +40,7 @@ export class BinanceService {
 
   destroy(): void {
     this.stopTickerStream();
+    this.stopAccountStream();
     this.apiKey = "";
     this.apiSecret = "";
   }
@@ -279,5 +284,131 @@ export class BinanceService {
       this.ws = null;
     }
     this.reconnectAttempts = 0;
+  }
+
+  /** Start a private user data stream for real-time balance/position updates. */
+  async startAccountStream(
+    onPortfolio: (snap: PortfolioSnapshot) => void,
+    onPositions: (positions: Position[]) => void,
+  ): Promise<void> {
+    this.stopAccountStream();
+    this.accountReconnectAttempts = 0;
+
+    const client = this.mode === "spot" ? this.spot : this.futures;
+    const listenKeyPath = this.mode === "spot" ? "/api/v3/userDataStream" : "/fapi/v1/listenKey";
+
+    // Create listenKey
+    const { data } = await client.post(listenKeyPath, null, {
+      headers: { "X-MBX-APIKEY": this.apiKey },
+    });
+    this.listenKey = (data as { listenKey: string }).listenKey;
+
+    // Keep-alive every 30 minutes
+    this.listenKeyTimer = setInterval(async () => {
+      try {
+        await client.put(listenKeyPath, null, {
+          headers: { "X-MBX-APIKEY": this.apiKey },
+          params: { listenKey: this.listenKey },
+        });
+      } catch (err) {
+        logger.warn("SYSTEM", `Binance listenKey keep-alive failed: ${err}`);
+      }
+    }, 30 * 60_000);
+
+    const baseUrl = this.mode === "spot"
+      ? "wss://stream.binance.com:9443/ws"
+      : "wss://fstream.binance.com/ws";
+
+    this.connectAccountWs(`${baseUrl}/${this.listenKey}`, onPortfolio, onPositions);
+  }
+
+  private connectAccountWs(
+    url: string,
+    onPortfolio: (snap: PortfolioSnapshot) => void,
+    onPositions: (positions: Position[]) => void,
+  ): void {
+    this.accountWs = new WebSocket(url);
+
+    this.accountWs.on("message", (raw: Buffer) => {
+      try {
+        const msg = JSON.parse(raw.toString()) as { e: string; [key: string]: unknown };
+
+        if (this.mode === "spot" && msg.e === "outboundAccountPosition") {
+          // Spot: balance update
+          const balances = (msg as any).B as Array<{ a: string; f: string; l: string }>;
+          const usdt = balances.find((b) => b.a === "USDT");
+          if (usdt) {
+            const free = parseFloat(usdt.f);
+            const locked = parseFloat(usdt.l);
+            onPortfolio({
+              totalBalance: free + locked,
+              availableBalance: free,
+              dailyPnl: 0,
+              weeklyPnl: 0,
+            });
+          }
+        } else if (this.mode === "futures" && msg.e === "ACCOUNT_UPDATE") {
+          // Futures: balance + position update
+          const account = (msg as any).a as {
+            B: Array<{ a: string; wb: string; cw: string }>;
+            P: Array<{ s: string; pa: string; ep: string; mp: string; up: string }>;
+          };
+          const usdt = account.B.find((b) => b.a === "USDT");
+          if (usdt) {
+            onPortfolio({
+              totalBalance: parseFloat(usdt.wb),
+              availableBalance: parseFloat(usdt.cw),
+              dailyPnl: 0,
+              weeklyPnl: 0,
+            });
+          }
+          const positions = account.P
+            .filter((p) => parseFloat(p.pa) !== 0)
+            .map((p) => ({
+              symbol: p.s,
+              side: parseFloat(p.pa) > 0 ? ("BUY" as const) : ("SELL" as const),
+              entryPrice: parseFloat(p.ep),
+              markPrice: parseFloat(p.mp),
+              quantity: Math.abs(parseFloat(p.pa)),
+              unrealizedPnl: parseFloat(p.up),
+              liquidationPrice: null,
+            }));
+          onPositions(positions);
+        }
+
+        this.accountReconnectAttempts = 0;
+      } catch {
+        /* ignore malformed messages */
+      }
+    });
+
+    this.accountWs.on("close", () => {
+      if (this.accountReconnectAttempts < 5) {
+        this.accountReconnectAttempts++;
+        const delay = Math.pow(2, this.accountReconnectAttempts - 1) * 1000;
+        logger.warn("SYSTEM", `Binance account stream closed, reconnecting in ${delay}ms`);
+        setTimeout(() => this.connectAccountWs(url, onPortfolio, onPositions), delay);
+      } else {
+        logger.error("SYSTEM", "Binance account stream failed after max retries");
+      }
+    });
+
+    this.accountWs.on("error", (err: Error) => {
+      logger.error("SYSTEM", `Binance account stream error: ${err.message}`);
+    });
+  }
+
+  stopAccountStream(): void {
+    if (this.listenKeyTimer) {
+      clearInterval(this.listenKeyTimer);
+      this.listenKeyTimer = null;
+    }
+    if (this.accountWs) {
+      this.accountWs.removeAllListeners();
+      this.accountWs.close();
+      this.accountWs = null;
+    }
+    this.listenKey = null;
+    this.accountReconnectAttempts = 0;
   }
 }

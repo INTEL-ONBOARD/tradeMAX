@@ -53,6 +53,12 @@ async function restoreSession(): Promise<void> {
       session: result.session,
       settings: result.settings,
     });
+
+    // Start real-time account streaming if exchange keys are configured
+    if (result.settings.hasBinanceKeys || result.settings.hasBybitKeys) {
+      const { accountWatcher } = await import("./accountWatcher.js");
+      accountWatcher.start(result.session.userId).catch(() => {});
+    }
   }
 }
 

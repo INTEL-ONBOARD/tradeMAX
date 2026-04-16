@@ -21,13 +21,9 @@ import type {
 import { CustomTitleBar } from "./components/CustomTitleBar";
 import { ConnectivityOverlay } from "./components/ConnectivityOverlay";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { useIdlePolling } from "./hooks/useIdlePolling";
-
 export default function App() {
   const currentScreen = useAppStore((s) => s.currentScreen);
   const store = useAppStore.getState();
-
-  useIdlePolling();
 
   // Initialize theme from localStorage on app startup
   useEffect(() => {

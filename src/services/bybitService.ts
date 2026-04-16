@@ -5,6 +5,7 @@ import type { PortfolioSnapshot, Position, OrderResult, MarketTick, ExchangeKeys
 export class BybitService {
   private rest: RestClientV5 | null = null;
   private wsClient: WebsocketClient | null = null;
+  private accountWsClient: WebsocketClient | null = null;
   private mode: "spot" | "futures" = "spot";
   private apiKey = "";
   private apiSecret = "";
@@ -19,6 +20,7 @@ export class BybitService {
 
   destroy(): void {
     this.stopTickerStream();
+    this.stopAccountStream();
     this.rest = null;
     this.apiKey = "";
     this.apiSecret = "";
@@ -195,6 +197,88 @@ export class BybitService {
         /* ignore cleanup errors */
       }
       this.wsClient = null;
+    }
+  }
+
+  /** Start a private WebSocket stream for real-time balance/position updates. */
+  startAccountStream(
+    onPortfolio: (snap: PortfolioSnapshot) => void,
+    onPositions: (positions: Position[]) => void,
+  ): void {
+    this.stopAccountStream();
+
+    this.accountWsClient = new WebsocketClient({
+      market: "v5",
+      key: this.apiKey,
+      secret: this.apiSecret,
+    });
+
+    // Subscribe to wallet updates (balance changes) — private topic
+    const category = this.mode === "spot" ? "spot" : "linear";
+    this.accountWsClient.subscribeV5("wallet", category, true);
+
+    // Subscribe to position updates (futures only)
+    if (this.mode === "futures") {
+      this.accountWsClient.subscribeV5("position", category, true);
+    }
+
+    this.accountWsClient.on("update", (msg: { topic: string; data: any }) => {
+      try {
+        if (msg.topic === "wallet") {
+          const coins = msg.data as Array<{
+            coin: Array<{ coin: string; equity: string; availableToWithdraw: string }>;
+            totalEquity: string;
+            totalAvailableBalance: string;
+          }>;
+          const account = coins[0];
+          if (account) {
+            onPortfolio({
+              totalBalance: parseFloat(account.totalEquity ?? "0"),
+              availableBalance: parseFloat(account.totalAvailableBalance ?? "0"),
+              dailyPnl: 0,
+              weeklyPnl: 0,
+            });
+          }
+        } else if (msg.topic === "position") {
+          const positions = (msg.data as Array<{
+            symbol: string;
+            side: string;
+            size: string;
+            avgPrice: string;
+            markPrice: string;
+            unrealisedPnl: string;
+            liqPrice: string;
+          }>)
+            .filter((p) => parseFloat(p.size) > 0)
+            .map((p) => ({
+              symbol: p.symbol,
+              side: p.side === "Buy" ? ("BUY" as const) : ("SELL" as const),
+              entryPrice: parseFloat(p.avgPrice),
+              markPrice: parseFloat(p.markPrice),
+              quantity: parseFloat(p.size),
+              unrealizedPnl: parseFloat(p.unrealisedPnl),
+              liquidationPrice: parseFloat(p.liqPrice) || null,
+            }));
+          onPositions(positions);
+        }
+      } catch {
+        /* ignore malformed messages */
+      }
+    });
+
+    this.accountWsClient.on("exception", (err: { message?: string }) => {
+      logger.error("SYSTEM", `Bybit account stream error: ${err?.message ?? String(err)}`);
+    });
+  }
+
+  stopAccountStream(): void {
+    if (this.accountWsClient) {
+      try {
+        this.accountWsClient.closeAll();
+      } catch {
+        /* ignore cleanup errors */
+      }
+      this.accountWsClient = null;
     }
   }
 }
