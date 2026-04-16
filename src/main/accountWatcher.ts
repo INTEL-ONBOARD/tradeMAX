@@ -4,13 +4,14 @@ import type { BybitService } from "../services/bybitService.js";
 import { decrypt } from "../services/encryptionService.js";
 import { getUserDoc } from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
-import type { PortfolioSnapshot, Position } from "../shared/types.js";
+import type { PortfolioSnapshot, Position, MarketTick } from "../shared/types.js";
 
 type RealExchange = BinanceService | BybitService;
 
 type AccountCallbacks = {
   onPortfolio: (snap: PortfolioSnapshot) => void;
   onPositions: (positions: Position[]) => void;
+  onMarketTick: (tick: MarketTick) => void;
 };
 
 class AccountWatcher {
@@ -51,14 +52,20 @@ class AccountWatcher {
       const positions = await this.exchange.getOpenPositions();
       this.callbacks.onPositions(positions);
 
-      // Start real-time WebSocket stream
+      // Start real-time WebSocket streams
       await this.exchange.startAccountStream(
         (snap) => this.callbacks?.onPortfolio(snap),
         (pos) => this.callbacks?.onPositions(pos),
       );
 
+      // Start market ticker stream for live price data
+      const symbol = user.engineConfig.tradingSymbol || "BTCUSDT";
+      this.exchange.startTickerStream(symbol, (tick) => {
+        this.callbacks?.onMarketTick(tick);
+      });
+
       this.running = true;
-      await logger.info("SYSTEM", `Account watcher started for ${user.selectedExchange}`);
+      await logger.info("SYSTEM", `Account watcher started for ${user.selectedExchange} (${symbol})`);
     } catch (err) {
       await logger.warn("SYSTEM", `Account watcher failed to start: ${err}`);
       this.cleanup();

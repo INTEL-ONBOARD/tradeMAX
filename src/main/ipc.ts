@@ -41,10 +41,11 @@ export function setMainWindow(window: BrowserWindow): void {
 
 export function registerIpcHandlers(): void {
 
-  // ─── Account Watcher (real-time balance/positions) ──
+  // ─── Account Watcher (real-time balance/positions/prices) ──
   accountWatcher.setCallbacks({
     onPortfolio: (snap) => send(STREAM.PORTFOLIO, snap),
     onPositions: (positions) => send(STREAM.POSITIONS, positions),
+    onMarketTick: (tick) => send(STREAM.MARKET_TICK, tick),
   });
 
   // ─── Auth ────────────────────────────────────────────
