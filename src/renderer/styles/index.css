@@ -49,6 +49,8 @@
   --color-info-border:  rgba(239, 68, 68, 0.25);
 
   --sidebar-width: 68px;
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.2);
+  --shadow-glass-hover: 0 12px 48px rgba(0, 0, 0, 0.3);
 }
 
 :root[data-theme="light"] {
@@ -88,6 +90,8 @@
   --color-info-border:  rgba(220, 38, 38, 0.2);
 
   --sidebar-width: 68px;
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow-glass-hover: 0 12px 48px rgba(0, 0, 0, 0.12);
 }
 
 /* ─── Base ──────────────────────────────────────────────────── */
@@ -145,14 +149,6 @@ body {
   border: none;
   border-radius: 0;
   box-shadow: none;
-}
-
-.glass {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border-radius: 12px;
 }
 
 .input-base {
@@ -502,11 +498,17 @@ body {
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.05) 100%);
 }
 
-.gradient-animated {
-  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
-  background-size: 400% 400%;
-  animation: gradientShift 15s ease infinite;
-}
+/* ─── Animation Timing Strategy ──────────────────────────────── */
+/*
+  Global animation timing conventions:
+  - Quick interactions (150-200ms): Focus states, button hovers
+  - Entrance animations (400-600ms): Page transitions, form appearance
+  - Subtle indicators (1.5-2s): Pulse effects, connectivity status
+  - Background effects (15s): Gradient shifts (low-priority, non-blocking)
+
+  GPU-accelerated: Uses transform/opacity properties
+  Easing: ease-out for entrances, ease-in-out for continuous
+*/
 
 /* ─── Glass Effects ──────────────────────────────────────────── */
 
@@ -516,17 +518,17 @@ body {
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-glass);
 }
 
 .glass-card-light {
   background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .glass-card-dark {
   background: rgba(13, 22, 41, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Glassmorphic badge/pill */
