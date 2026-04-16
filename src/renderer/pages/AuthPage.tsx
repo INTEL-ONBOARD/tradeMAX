@@ -1,50 +1,32 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useState, useEffect } from "react";
+import { AnimatePresence } from "framer-motion";
 import { useAppStore } from "../store/appStore";
-import { IPC } from "../../shared/constants";
 import type { UserSession, UserSettings } from "../../shared/types";
-import { TrendingUp, Mail, Lock, User, ArrowLeft, AlertCircle, Loader2 } from "../components/icons";
-import { InputField } from "../components/InputField";
+import { ChoiceScreen } from "../components/ChoiceScreen";
+import { LoginForm } from "../components/LoginForm";
+import { RegisterForm } from "../components/RegisterForm";
+
+type AuthStep = "choice" | "login" | "register";
 
 export function AuthPage() {
-  const authMode = useAppStore((s) => s.authMode);
-  const setAuthMode = useAppStore((s) => s.setAuthMode);
-  const setScreen = useAppStore((s) => s.setScreen);
+  const [currentStep, setCurrentStep] = useState<AuthStep>("choice");
   const setUser = useAppStore((s) => s.setUser);
   const setSettings = useAppStore((s) => s.setSettings);
   const setTheme = useAppStore((s) => s.setTheme);
+  const setScreen = useAppStore((s) => s.setScreen);
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  // Ambient glow effect
+  useEffect(() => {
+    // Any initialization if needed
+  }, []);
 
-  const isRegister = authMode === "register";
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const channel = isRegister ? IPC.AUTH_REGISTER : IPC.AUTH_LOGIN;
-      const payload = isRegister ? { name, email, password } : { email, password };
-      const result = (await window.api.invoke(channel, payload)) as {
-        session: UserSession;
-        settings: UserSettings;
-      };
-      setUser(result.session);
-      setSettings(result.settings);
-      if (result.settings.themePreference) setTheme(result.settings.themePreference);
-      setScreen("dashboard");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Something went wrong";
-      if (msg.includes("EMAIL_EXISTS")) setError("An account with this email already exists.");
-      else if (msg.includes("INVALID_CREDENTIALS")) setError("Invalid email or password.");
-      else setError(msg);
-    } finally {
-      setLoading(false);
+  const handleSuccess = (session: UserSession, settings: UserSettings) => {
+    setUser(session);
+    setSettings(settings);
+    if (settings.themePreference) {
+      setTheme(settings.themePreference);
     }
+    setScreen("dashboard");
   };
 
   return (
@@ -58,113 +40,30 @@ export function AuthPage() {
         style={{ background: "radial-gradient(ellipse, #EF4444 0%, transparent 70%)" }}
       />
 
-      <motion.div
-        initial={{ scale: 0.93, opacity: 0, y: 12 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: [0.34, 1.1, 0.64, 1] }}
-        className="relative z-10 w-full max-w-sm"
-      >
-        <div className="card-elevated p-8">
-          {/* Logo + Back */}
-          <div className="flex items-center justify-between mb-7">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-primary-600 flex items-center justify-center shadow-[0_2px_8px_rgba(239,68,68,0.4)]">
-                <TrendingUp size={13} className="text-white" />
-              </div>
-              <span className="font-bold text-sm text-[var(--text-primary)]">TradeMAX</span>
-            </div>
-            <button
-              onClick={() => setScreen("intro")}
-              className="flex items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
-            >
-              <ArrowLeft size={13} /> Back
-            </button>
-          </div>
-
-          {/* Heading */}
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-[var(--text-primary)] leading-tight">
-              {isRegister ? "Create your account" : "Welcome back"}
-            </h2>
-            <p className="text-sm text-[var(--text-secondary)] mt-1">
-              {isRegister ? "Set up TradeMAX to start autonomous trading" : "Sign in to your TradeMAX dashboard"}
-            </p>
-          </div>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {isRegister && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}>
-                <InputField
-                  icon={User}
-                  placeholder="Full name"
-                  value={name}
-                  onChange={setName}
-                  required
-                  autoComplete="name"
-                />
-              </motion.div>
-            )}
-
-            <InputField
-              icon={Mail}
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={setEmail}
-              required
-              autoComplete="email"
+      <div className="relative z-10 flex flex-col items-center justify-center w-full px-6">
+        <AnimatePresence mode="wait">
+          {currentStep === "choice" && (
+            <ChoiceScreen
+              onLoginSelect={() => setCurrentStep("login")}
+              onRegisterSelect={() => setCurrentStep("register")}
             />
+          )}
 
-            <InputField
-              icon={Lock}
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={setPassword}
-              required
-              minLength={8}
-              autoComplete={isRegister ? "new-password" : "current-password"}
+          {currentStep === "login" && (
+            <LoginForm
+              onBack={() => setCurrentStep("choice")}
+              onSuccess={handleSuccess}
             />
+          )}
 
-            {/* Error */}
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-start gap-2 rounded-lg p-3 border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)]"
-              >
-                <AlertCircle size={14} className="text-[var(--color-loss)] shrink-0 mt-0.5" />
-                <p className="text-xs text-[var(--color-loss)] leading-relaxed">{error}</p>
-              </motion.div>
-            )}
-
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full py-3 mt-1"
-            >
-              {loading ? (
-                <><Loader2 size={15} className="animate-spin" /> {isRegister ? "Creating account..." : "Signing in..."}</>
-              ) : (
-                isRegister ? "Create Account" : "Sign In"
-              )}
-            </button>
-          </form>
-
-          {/* Switch */}
-          <p className="text-center text-xs text-[var(--text-tertiary)] mt-5">
-            {isRegister ? "Already have an account?" : "Don't have an account?"}{" "}
-            <button
-              onClick={() => { setAuthMode(isRegister ? "login" : "register"); setError(""); }}
-              className="text-primary-400 font-medium hover:text-primary-300 transition-colors"
-            >
-              {isRegister ? "Sign in" : "Create account"}
-            </button>
-          </p>
-        </div>
-      </motion.div>
+          {currentStep === "register" && (
+            <RegisterForm
+              onBack={() => setCurrentStep("choice")}
+              onSuccess={handleSuccess}
+            />
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
