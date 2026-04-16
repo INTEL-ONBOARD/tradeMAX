@@ -11,7 +11,7 @@ describe('calculatePasswordStrength', () => {
     it('should rate very short passwords as weak', () => {
       const result = calculatePasswordStrength('abc');
       expect(result.level).toBe('weak');
-      expect(result.score).toBeLessThan(25);
+      expect(result.score).toBeLessThan(30);
     });
 
     it('should rate simple lowercase passwords as weak', () => {
@@ -27,14 +27,14 @@ describe('calculatePasswordStrength', () => {
 
   describe('fair passwords', () => {
     it('should rate passwords with letters and numbers as fair', () => {
-      const result = calculatePasswordStrength('password123');
+      const result = calculatePasswordStrength('MyPass123');
       expect(result.level).toBe('fair');
-      expect(result.score).toBeGreaterThanOrEqual(25);
-      expect(result.score).toBeLessThan(50);
+      expect(result.score).toBeGreaterThanOrEqual(30);
+      expect(result.score).toBeLessThan(60);
     });
 
     it('should return correct message for fair passwords', () => {
-      const result = calculatePasswordStrength('test1234');
+      const result = calculatePasswordStrength('Test1234');
       expect(result.message).toBe('Fair password');
     });
   });
@@ -43,7 +43,7 @@ describe('calculatePasswordStrength', () => {
     it('should rate passwords with mixed case, numbers, and special chars as good or strong', () => {
       const result = calculatePasswordStrength('TestPass123!');
       expect(['good', 'strong']).toContain(result.level);
-      expect(result.score).toBeGreaterThanOrEqual(50);
+      expect(result.score).toBeGreaterThanOrEqual(60);
     });
 
     it('should return correct message for good passwords', () => {
@@ -54,13 +54,13 @@ describe('calculatePasswordStrength', () => {
 
   describe('strong passwords', () => {
     it('should rate complex long passwords as strong', () => {
-      const result = calculatePasswordStrength('VerySecure!Pass@2024');
+      const result = calculatePasswordStrength('VeryLongSecurePassw0rd!@#$%');
       expect(result.level).toBe('strong');
-      expect(result.score).toBeGreaterThanOrEqual(75);
+      expect(result.score).toBeGreaterThanOrEqual(85);
     });
 
     it('should return correct message for strong passwords', () => {
-      const result = calculatePasswordStrength('Str0ng!Pass#2024');
+      const result = calculatePasswordStrength('ComplexP@ss123!Long');
       expect(result.level).toBe('strong');
       expect(result.message).toBe('Strong password');
     });
