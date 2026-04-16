@@ -2,17 +2,17 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { IPC } from "../../shared/constants";
 import type { UserSession, UserSettings } from "../../shared/types";
-import { Mail, Lock, User, ArrowLeft, AlertCircle, Loader2, Chrome } from "./icons";
+import { Mail, Lock, User, AlertCircle, Loader2, Chrome } from "./icons";
 import { InputField } from "./InputField";
 import { PasswordStrengthBar } from "./PasswordStrengthBar";
 import { validateEmail, validatePassword, validateName } from "./PasswordStrengthUtils";
 
 interface RegisterFormProps {
-  onBack: () => void;
+  onLoginClick: () => void;
   onSuccess: (session: UserSession, settings: UserSettings) => void;
 }
 
-export function RegisterForm({ onBack, onSuccess }: RegisterFormProps) {
+export function RegisterForm({ onLoginClick, onSuccess }: RegisterFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -100,19 +100,12 @@ export function RegisterForm({ onBack, onSuccess }: RegisterFormProps) {
   return (
     <motion.div
       key="register-form"
-      initial={{ opacity: 0, x: 100 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -100 }}
-      transition={{ duration: 0.3 }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.4 }}
       className="w-full max-w-[420px]"
     >
-      {/* Header */}
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors mb-6"
-      >
-        <ArrowLeft size={14} /> Back
-      </button>
 
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-[var(--text-primary)] leading-tight">
@@ -138,9 +131,9 @@ export function RegisterForm({ onBack, onSuccess }: RegisterFormProps) {
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          transition={{ duration: 0.3 }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
         >
           <InputField
             icon={User}
@@ -153,18 +146,28 @@ export function RegisterForm({ onBack, onSuccess }: RegisterFormProps) {
           />
         </motion.div>
 
-        <InputField
-          icon={Mail}
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={handleEmailChange}
-          error={errors.email}
-          isDirty={dirtyFields.email}
-          autoComplete="email"
-        />
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+        >
+          <InputField
+            icon={Mail}
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={handleEmailChange}
+            error={errors.email}
+            isDirty={dirtyFields.email}
+            autoComplete="email"
+          />
+        </motion.div>
 
-        <div>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+        >
           <InputField
             icon={Lock}
             type="password"
@@ -178,13 +181,18 @@ export function RegisterForm({ onBack, onSuccess }: RegisterFormProps) {
           {dirtyFields.password && (
             <PasswordStrengthBar password={password} />
           )}
-        </div>
+        </motion.div>
 
         {/* Submit Button */}
-        <button
+        <motion.button
           type="submit"
           disabled={loading || !isFormValid}
           className="btn-primary w-full py-3 mt-6"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.4 }}
+          whileHover={!loading ? { scale: 1.02 } : {}}
+          whileTap={!loading ? { scale: 0.98 } : {}}
         >
           {loading ? (
             <>
@@ -193,7 +201,7 @@ export function RegisterForm({ onBack, onSuccess }: RegisterFormProps) {
           ) : (
             "Create Account"
           )}
-        </button>
+        </motion.button>
       </form>
 
       {/* Divider */}
@@ -209,14 +217,36 @@ export function RegisterForm({ onBack, onSuccess }: RegisterFormProps) {
       </div>
 
       {/* Google OAuth Button */}
-      <button
+      <motion.button
         type="button"
         onClick={handleGoogleAuth}
         disabled={loading}
         className="btn-ghost w-full py-3 flex items-center justify-center gap-2"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.5 }}
+        whileHover={!loading ? { scale: 1.02 } : {}}
+        whileTap={!loading ? { scale: 0.98 } : {}}
       >
         <Chrome size={14} /> Continue with Google
-      </button>
+      </motion.button>
+
+      {/* Login Link */}
+      <motion.p
+        className="text-sm text-[var(--text-secondary)] text-center mt-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4, delay: 0.6 }}
+      >
+        Already have an account?{" "}
+        <button
+          type="button"
+          onClick={onLoginClick}
+          className="text-primary-600 hover:text-primary-500 font-600 transition-colors hover:underline"
+        >
+          Login
+        </button>
+      </motion.p>
     </motion.div>
   );
 }
