@@ -13,6 +13,7 @@ import type {
   AgentStatus,
   LogEntry,
   MarketTick,
+  AppNotification,
   UserSession,
   UserSettings,
 } from "../shared/types";
@@ -20,10 +21,13 @@ import type {
 import { CustomTitleBar } from "./components/CustomTitleBar";
 import { ConnectivityOverlay } from "./components/ConnectivityOverlay";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { useIdlePolling } from "./hooks/useIdlePolling";
 
 export default function App() {
   const currentScreen = useAppStore((s) => s.currentScreen);
   const store = useAppStore.getState();
+
+  useIdlePolling();
 
   // Initialize theme from localStorage on app startup
   useEffect(() => {
@@ -48,6 +52,7 @@ export default function App() {
     unsubs.push(api.on(STREAM.AI_DECISION, (d: any) => store.setLastAIDecision(d as AIDecision)));
     unsubs.push(api.on(STREAM.AGENT_STATUS, (d: any) => store.setAgentStatus(d as AgentStatus)));
     unsubs.push(api.on(STREAM.LOG, (d: any) => store.addLog(d as LogEntry)));
+    unsubs.push(api.on(STREAM.NOTIFICATION, (d: any) => store.addNotification(d as AppNotification)));
 
     unsubs.push(
       api.on("session:restored", (d: any) => {
