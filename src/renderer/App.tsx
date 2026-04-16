@@ -4,7 +4,7 @@ import { useAppStore } from "./store/appStore";
 import { IntroPage } from "./pages/IntroPage";
 import { AuthPage } from "./pages/AuthPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import { STREAM } from "../shared/constants";
+import { IPC, STREAM } from "../shared/constants";
 import type {
   PortfolioSnapshot,
   Position,
@@ -61,12 +61,11 @@ export default function App() {
 
         // Auto-fetch portfolio and positions if exchange keys are configured
         if (data.settings.hasBinanceKeys || data.settings.hasBybitKeys) {
-          api.invoke("portfolio:get").then((p: any) => {
+          api.invoke(IPC.PORTFOLIO_GET).then((p: any) => {
             if (p) store.setPortfolio(p as PortfolioSnapshot);
           }).catch(() => {});
-          api.invoke("positions:get").then((pos: any) => {
-            const arr = pos as Position[];
-            if (arr.length > 0) store.setPositions(arr);
+          api.invoke(IPC.POSITIONS_GET).then((pos: any) => {
+            store.setPositions(pos as Position[]);
           }).catch(() => {});
         }
       })
