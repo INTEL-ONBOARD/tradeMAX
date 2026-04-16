@@ -8,6 +8,9 @@ import { safetyService } from "../services/safetyService.js";
 import { TradeModel } from "../db/models/Trade.js";
 import { LogModel } from "../db/models/Log.js";
 import { saveSession, clearSession } from "./sessionManager.js";
+import { createExchangeService } from "../services/exchangeFactory.js";
+import { decrypt } from "../services/encryptionService.js";
+import { mapExchangeError } from "./exchangeErrors.js";
 
 let currentUserId: string | null = null;
 
@@ -67,16 +70,47 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.SETTINGS_SAVE_API_KEYS, async (_e, data) => {
     if (!currentUserId) throw new Error("Not authenticated");
     const parsed = apiKeysSchema.parse(data);
-    await auth.saveApiKeys(currentUserId, parsed.exchange, parsed.apiKey, parsed.apiSecret);
-    await logger.info("SYSTEM", `API keys saved for ${parsed.exchange}`);
+
+    // Paper exchange doesn't use real API keys — skip validation and saving
+    if (parsed.exchange === "paper") {
+      await logger.info("SYSTEM", "Paper exchange selected — no API key validation needed");
+      const settings = await auth.getSettings(currentUserId);
+      return { settings, portfolio: null };
+    }
+
+    const user = await auth.getUserDoc(currentUserId);
+    const exchange = createExchangeService(parsed.exchange);
+
+    try {
+      await exchange.initialize(
+        { apiKey: parsed.apiKey, apiSecret: parsed.apiSecret },
+        user.tradingMode,
+      );
+      const portfolio = await exchange.getBalance();
+
+      const settings = await auth.saveApiKeys(
+        currentUserId,
+        parsed.exchange,
+        parsed.apiKey,
+        parsed.apiSecret,
+      );
+      await logger.info("SYSTEM", `API keys validated and saved for ${parsed.exchange}`);
+      return { settings, portfolio };
+    } catch (err) {
+      const friendlyMessage = mapExchangeError(err);
+      await logger.warn("SYSTEM", `API key validation failed for ${parsed.exchange}: ${err}`);
+      throw new Error(friendlyMessage);
+    } finally {
+      exchange.destroy();
+    }
   });
 
   ipcMain.handle(IPC.SETTINGS_SAVE_CLAUDE_KEY, async (_e, data) => {
     if (!currentUserId) throw new Error("Not authenticated");
     const parsed = claudeKeySchema.parse(data);
-    await auth.saveClaudeKey(currentUserId, parsed.claudeApiKey);
+    const updated = await auth.saveClaudeKey(currentUserId, parsed.claudeApiKey);
     await logger.info("SYSTEM", "Claude API key saved");
-    return auth.getSettings(currentUserId);
+    return updated;
   });
 
   ipcMain.handle(IPC.SETTINGS_GET, async () => {
