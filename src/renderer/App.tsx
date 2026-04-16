@@ -17,10 +17,13 @@ import type {
   UserSettings,
 } from "../shared/types";
 
+import { CustomTitleBar } from "./components/CustomTitleBar";
+
 export default function App() {
   const currentScreen = useAppStore((s) => s.currentScreen);
 
   useEffect(() => {
+    if (!window.api) return;
     const store = useAppStore.getState();
     const unsubs: (() => void)[] = [];
 
@@ -48,24 +51,29 @@ export default function App() {
   }, []);
 
   return (
-    <div className="h-screen w-screen overflow-hidden">
-      <AnimatePresence mode="wait">
-        {currentScreen === "intro" && (
-          <motion.div key="intro" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
-            <IntroPage />
-          </motion.div>
-        )}
-        {currentScreen === "auth" && (
-          <motion.div key="auth" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }}>
-            <AuthPage />
-          </motion.div>
-        )}
-        {currentScreen === "dashboard" && (
-          <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
-            <DashboardPage />
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="h-screen w-screen overflow-hidden" style={{ background: "var(--bg-base)" }}>
+      {/* Invisible drag region for Intro/Auth pages */}
+      {currentScreen !== "dashboard" && <div className="absolute top-0 left-0 right-0 h-8 z-50" style={{ WebkitAppRegion: "drag", pointerEvents: "none" } as React.CSSProperties} />}
+      
+      <div className="h-full w-full relative">
+        <AnimatePresence mode="wait">
+          {currentScreen === "intro" && (
+            <motion.div key="intro" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="absolute inset-0">
+              <IntroPage />
+            </motion.div>
+          )}
+          {currentScreen === "auth" && (
+            <motion.div key="auth" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="absolute inset-0">
+              <AuthPage />
+            </motion.div>
+          )}
+          {currentScreen === "dashboard" && (
+            <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="absolute inset-0">
+              <DashboardPage />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

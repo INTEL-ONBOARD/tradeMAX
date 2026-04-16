@@ -1,61 +1,69 @@
-import { GlassCard } from "./GlassCard";
-import { AgentControlPanel } from "./AgentControlPanel";
-import { PortfolioPanel } from "./PortfolioPanel";
-import { AIDecisionFeed } from "./AIDecisionFeed";
-import { APIKeysPanel } from "./APIKeysPanel";
+import { useState } from "react";
 import { useAppStore } from "../store/appStore";
-import { IPC } from "../../shared/constants";
+import { SettingsModal } from "./SettingsModal";
+import { Zap, LayoutGrid, Settings, Shield } from "./icons";
 
-export function Sidebar() {
-  const user = useAppStore((s) => s.user);
-  const theme = useAppStore((s) => s.theme);
-  const toggleTheme = useAppStore((s) => s.toggleTheme);
-  const reset = useAppStore((s) => s.reset);
+interface RibbonProps {
+  activeView: string;
+  onChangeView: (view: string) => void;
+}
 
-  const handleLogout = async () => {
-    await window.api.invoke(IPC.AUTH_LOGOUT);
-    reset();
-  };
+export function SidebarRibbon({ activeView, onChangeView }: RibbonProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const agentStatus = useAppStore((s) => s.agentStatus);
+
+  const navItems = [
+    { id: "agent", icon: Zap },
+    { id: "tools", icon: LayoutGrid },
+  ];
 
   return (
-    <aside className="w-[260px] min-w-[260px] h-screen flex flex-col gap-3 p-3 overflow-y-auto border-r border-[var(--border)]">
-      <div className="px-3 py-4 text-center">
-        <h1 className="text-xl font-bold text-primary">
-          Trade<span className="text-accent">MAX</span>
-        </h1>
-        <p className="text-xs text-[var(--text-secondary)] mt-1">{user?.email}</p>
-      </div>
-
-      <AgentControlPanel />
-      <PortfolioPanel />
-      <AIDecisionFeed />
-
-      <GlassCard className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Settings</h3>
-
-        <APIKeysPanel />
-
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-sm text-[var(--text-secondary)]">Theme</span>
-          <button
-            onClick={async () => {
-              toggleTheme();
-              const next = theme === "dark" ? "light" : "dark";
-              await window.api.invoke(IPC.SETTINGS_UPDATE, { themePreference: next });
-            }}
-            className="text-sm px-3 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] hover:border-primary transition-colors"
-          >
-            {theme === "dark" ? "Light" : "Dark"}
-          </button>
+    <>
+      <aside
+        className="flex flex-col items-center py-4 h-full shrink-0 border-r border-[var(--border)] z-10 relative"
+        style={{ width: "var(--sidebar-width)", background: "var(--bg-topbar, var(--bg-surface))" }}
+      >
+        {/* Nav actions */}
+        <div className="flex-1 flex flex-col items-center gap-6 mt-4">
+          {navItems.map((item) => {
+            const isActive = activeView === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onChangeView(item.id)}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all relative ${isActive
+                  ? "text-primary-400 bg-primary-500/10"
+                  : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)]"
+                  }`}
+              >
+                {isActive && (
+                  <div className="absolute left-[-16px] w-[3px] h-6 bg-primary-500 rounded-r-md" />
+                )}
+                <item.icon size={20} />
+              </button>
+            );
+          })}
         </div>
 
-        <button
-          onClick={handleLogout}
-          className="mt-2 w-full py-2 text-sm rounded-lg text-red-400 border border-red-400/30 hover:bg-red-400/10 transition-colors"
-        >
-          Logout
-        </button>
-      </GlassCard>
-    </aside>
+        {/* Bottom actions */}
+        <div className="flex flex-col items-center gap-4 mb-2">
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] transition-colors"
+          >
+            <Settings size={20} />
+          </button>
+
+          {/* Agent status badge */}
+          <div className="relative mt-2">
+            <Shield size={24} className={agentStatus.running ? "text-[var(--color-profit)]" : agentStatus.frozen ? "text-[var(--color-loss)]" : "text-[var(--text-tertiary)]"} />
+            <div className={`absolute bottom-0 right-[-2px] w-2.5 h-2.5 rounded-full border border-[var(--bg-surface)] ${agentStatus.running ? "bg-[var(--color-profit)]" : agentStatus.frozen ? "bg-[var(--color-loss)]" : "bg-transparent"
+              }`} />
+          </div>
+        </div>
+      </aside>
+
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </>
   );
 }

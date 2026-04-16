@@ -19,6 +19,7 @@ export const IPC = {
   AGENT_START: "agent:start",
   AGENT_STOP: "agent:stop",
   AGENT_KILL_SWITCH: "agent:kill-switch",
+  AGENT_RESET_FREEZE: "agent:reset-freeze",
 
   LOGS_RECENT: "logs:recent",
 } as const;

@@ -1,16 +1,30 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import { ALLOWED_INVOKE_CHANNELS, ALLOWED_STREAM_CHANNELS } from "../shared/constants.js";
+
+// Inlined from shared/constants to avoid sandbox-related module resolution issues
+const ALLOWED_INVOKE_CHANNELS = [
+  "auth:register", "auth:login", "auth:logout", "auth:session",
+  "settings:save-api-keys", "settings:save-claude-key", "settings:get", "settings:update",
+  "portfolio:get", "positions:get", "trades:history",
+  "ai:last-decision",
+  "agent:start", "agent:stop", "agent:kill-switch", "agent:reset-freeze",
+  "logs:recent"
+];
+
+const ALLOWED_STREAM_CHANNELS = [
+  "stream:market-tick", "stream:portfolio", "stream:positions",
+  "stream:trade-executed", "stream:ai-decision", "stream:agent-status", "stream:log"
+];
 
 contextBridge.exposeInMainWorld("api", {
   invoke(channel: string, data?: unknown): Promise<unknown> {
-    if (!(ALLOWED_INVOKE_CHANNELS as readonly string[]).includes(channel)) {
+    if (!ALLOWED_INVOKE_CHANNELS.includes(channel)) {
       return Promise.reject(new Error(`IPC channel not allowed: ${channel}`));
     }
     return ipcRenderer.invoke(channel, data);
   },
 
   on(event: string, callback: (data: unknown) => void): () => void {
-    if (!(ALLOWED_STREAM_CHANNELS as readonly string[]).includes(event)) {
+    if (!ALLOWED_STREAM_CHANNELS.includes(event)) {
       console.warn(`Stream event not allowed: ${event}`);
       return () => {};
     }

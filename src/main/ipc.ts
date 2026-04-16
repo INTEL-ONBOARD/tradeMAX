@@ -21,12 +21,19 @@ export function setCurrentUserId(id: string | null): void {
   else logger.clearUserId();
 }
 
-export function registerIpcHandlers(mainWindow: BrowserWindow): void {
-  const send = (channel: string, data: unknown) => {
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(channel, data);
-    }
-  };
+let mainWindow: BrowserWindow | null = null;
+
+const send = (channel: string, data: unknown) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, data);
+  }
+};
+
+export function setMainWindow(window: BrowserWindow): void {
+  mainWindow = window;
+}
+
+export function registerIpcHandlers(): void {
 
   // ─── Auth ────────────────────────────────────────────
   ipcMain.handle(IPC.AUTH_REGISTER, async (_e, data) => {
@@ -164,6 +171,11 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     if (currentUserId) {
       await auth.updateSettings(currentUserId, { agentModeEnabled: false });
     }
+  });
+
+  ipcMain.handle(IPC.AGENT_RESET_FREEZE, async () => {
+    safetyService.resetFreeze();
+    await logger.info("SYSTEM", "User manually reset safety freeze");
   });
 
   // ─── Logs ────────────────────────────────────────────

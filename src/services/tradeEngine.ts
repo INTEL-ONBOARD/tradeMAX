@@ -32,7 +32,7 @@ export class TradeEngine {
   private userId: string = "";
   private symbol: string = "";
   private exchange: ExchangeServiceInstance | null = null;
-  private loopTimer: ReturnType<typeof setInterval> | null = null;
+  private loopTimer: ReturnType<typeof setTimeout> | null = null;
   private priceBuffer: PriceBar[] = [];
   private running = false;
   private lastAIDecision: AIDecision | null = null;
@@ -97,13 +97,18 @@ export class TradeEngine {
     this.emitStatus();
     await logger.info("TRADE", `Agent started on ${this.symbol} (${selectedExchange} ${user.tradingMode})`);
 
-    this.loopTimer = setInterval(() => this.cycle(), ENGINE.LOOP_INTERVAL_MS);
+    this.scheduleNextCycle();
+  }
+
+  private scheduleNextCycle(): void {
+    if (!this.running) return;
+    this.loopTimer = setTimeout(() => this.cycle(), ENGINE.LOOP_INTERVAL_MS);
   }
 
   async stop(): Promise<void> {
     if (!this.running) return;
 
-    if (this.loopTimer) clearInterval(this.loopTimer);
+    if (this.loopTimer) clearTimeout(this.loopTimer);
     this.loopTimer = null;
 
     this.exchange?.stopTickerStream();
@@ -385,6 +390,8 @@ export class TradeEngine {
       });
     } catch (err) {
       await logger.error("TRADE", `Cycle error: ${err}`);
+    } finally {
+      this.scheduleNextCycle();
     }
   }
 

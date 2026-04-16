@@ -1,22 +1,25 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { GlassCard } from "./GlassCard";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
 
 export function AgentControlPanel() {
   const agentStatus = useAppStore((s) => s.agentStatus);
-  const settings = useAppStore((s) => s.settings);
-  const setSettings = useAppStore((s) => s.setSettings);
-
-  const [symbol, setSymbol] = useState("BTCUSDT");
   const [confirmKill, setConfirmKill] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
+  // We hardcode BTCUSDT for now in the massive dial view, or pull from settings if needed
+  const symbol = "BTCUSDT";
 
   const handleToggleAgent = async () => {
-    if (agentStatus.running) {
-      await window.api.invoke(IPC.AGENT_STOP);
-    } else {
-      await window.api.invoke(IPC.AGENT_START, { symbol });
+    setToggling(true);
+    try {
+      if (agentStatus.running) {
+        await window.api.invoke(IPC.AGENT_STOP);
+      } else {
+        await window.api.invoke(IPC.AGENT_START, { symbol });
+      }
+    } finally {
+      setToggling(false);
     }
   };
 
@@ -30,94 +33,61 @@ export function AgentControlPanel() {
     setConfirmKill(false);
   };
 
-  const handleModeChange = async (mode: "spot" | "futures") => {
-    const updated = await window.api.invoke(IPC.SETTINGS_UPDATE, { tradingMode: mode });
-    setSettings(updated as typeof settings);
-  };
-
-  const handleExchangeChange = async (exchange: "binance" | "bybit") => {
-    const updated = await window.api.invoke(IPC.SETTINGS_UPDATE, { selectedExchange: exchange });
-    setSettings(updated as typeof settings);
-  };
+  const isRunning = agentStatus.running;
 
   return (
-    <GlassCard className="flex flex-col gap-3">
-      <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Agent Control</h3>
+    <div className="flex flex-col items-center justify-center py-10 w-full mx-4 relative">
+      {/* Decorative Outer Dial Ring */}
+      <div className="relative w-48 h-48 rounded-full border-[12px] border-[var(--bg-inset)] flex items-center justify-center mb-6 shadow-inner">
+        {/* Dial Ticks (Visual representation) */}
+        <div className="absolute inset-0 rounded-full" 
+             style={{ background: isRunning ? "radial-gradient(ellipse at center, rgba(16,185,129,0.2) 0%, transparent 70%)" : "transparent" }} />
+             
+        {/* Play/Stop center button simulating the needle center */}
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center z-10 transition-colors shadow-lg ${
+          isRunning ? "bg-[var(--color-profit)] shadow-[0_0_20px_rgba(16,185,129,0.5)]" : "bg-[var(--text-tertiary)]"
+        }`}>
+          <div className="w-4 h-4 bg-[var(--bg-base)] rounded-full relative">
+             <div className="absolute w-12 h-1 bg-[var(--bg-base)] left-2 top-1.5 origin-left" 
+                  style={{ transform: isRunning ? "rotate(135deg)" : "rotate(45deg)", transition: "transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)" }} />
+          </div>
+        </div>
 
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Agent Mode</span>
-        <button
-          onClick={handleToggleAgent}
-          disabled={agentStatus.frozen}
-          className={`relative w-12 h-6 rounded-full transition-colors ${
-            agentStatus.running ? "bg-green-500" : "bg-[var(--bg-surface)]"
-          } ${agentStatus.frozen ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-        >
-          <motion.div
-            className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow"
-            animate={{ left: agentStatus.running ? 26 : 2 }}
-            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-          />
-        </button>
+        {/* Status Text under dial center inside ring */}
+        <span className={`absolute bottom-6 font-bold tracking-widest text-sm ${isRunning ? "text-[var(--color-profit)]" : "text-[var(--color-warn)]"}`}>
+          {isRunning ? "LIVE" : "OFF"}
+        </span>
       </div>
+
+      <h2 className="text-xl font-medium text-[var(--text-primary)] mb-8">TradeMAX Agent</h2>
+
+      {/* Main Action Button */}
+      <button
+        onClick={handleToggleAgent}
+        disabled={agentStatus.frozen && !agentStatus.running}
+        className={`w-64 py-4 rounded-full text-lg font-bold transition-all shadow-lg ${
+          isRunning 
+            ? "bg-transparent border-2 border-[var(--color-loss)] text-[var(--color-loss)] hover:bg-[var(--color-loss-bg)]"
+            : "bg-[var(--color-loss)] text-white hover:brightness-110 hover:shadow-[0_0_20px_rgba(244,63,94,0.4)]"
+        } disabled:opacity-50`}
+      >
+        {toggling ? "Processing..." : isRunning ? "Stop Agent" : "Turn On"}
+      </button>
+
+      <button onClick={handleKillSwitch} className={`mt-4 text-sm underline transition-colors ${confirmKill ? "text-[var(--color-loss)] font-bold" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"}`}>
+        {confirmKill ? "Confirm Emergency Kill" : "Emergency Kill Switch"}
+      </button>
 
       {agentStatus.frozen && (
-        <p className="text-xs text-red-400">Frozen: {agentStatus.reason}</p>
+        <div className="absolute top-4 right-4 bg-[var(--color-loss-bg)] border border-[var(--color-loss-border)] px-4 py-2 rounded-md">
+          <p className="text-xs text-[var(--color-loss)] font-bold">Safety Freeze</p>
+          <button onClick={() => window.api.invoke(IPC.AGENT_RESET_FREEZE)} className="text-[10px] underline text-[var(--color-loss)] mt-1">Reset</button>
+        </div>
       )}
-
-      <input
-        type="text"
-        value={symbol}
-        onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-        disabled={agentStatus.running}
-        placeholder="Symbol"
-        className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:border-primary disabled:opacity-50"
-      />
-
-      <div className="flex gap-2">
-        {(["binance", "bybit"] as const).map((ex) => (
-          <button
-            key={ex}
-            onClick={() => handleExchangeChange(ex)}
-            disabled={agentStatus.running}
-            className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors capitalize ${
-              settings?.selectedExchange === ex
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-primary/50"
-            } disabled:opacity-50`}
-          >
-            {ex}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex gap-2">
-        {(["spot", "futures"] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => handleModeChange(m)}
-            disabled={agentStatus.running}
-            className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors capitalize ${
-              settings?.tradingMode === m
-                ? "border-accent bg-accent/10 text-accent"
-                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-accent/50"
-            } disabled:opacity-50`}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-
-      <button
-        onClick={handleKillSwitch}
-        className={`w-full py-2 text-sm font-bold rounded-lg transition-colors ${
-          confirmKill
-            ? "bg-red-600 text-white"
-            : "bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20"
-        } kill-switch-pulse`}
-      >
-        {confirmKill ? "CONFIRM KILL" : "EMERGENCY KILL SWITCH"}
-      </button>
-    </GlassCard>
+      
+      <p className="text-[11px] text-[var(--text-tertiary)] mt-8 max-w-[280px] text-center">
+        Stop unnecessary apps/services for a better trading experience.
+      </p>
+    </div>
   );
 }
