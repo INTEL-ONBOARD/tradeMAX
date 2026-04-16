@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 
 interface Story {
+  id?: string;
   quote: string;
   author: string;
   result: string;
@@ -34,7 +35,7 @@ export function SuccessStories({
       <div className="space-y-3">
         {stories.map((story, idx) => (
           <motion.div
-            key={`${story.author}-${idx}`}
+            key={story.id || `${story.author}-${idx}`}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.4, delay: idx * 0.1 }}
@@ -42,7 +43,10 @@ export function SuccessStories({
           >
             <div className="flex gap-3 mb-3">
               {story.initials && (
-                <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center shrink-0">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: 'var(--avatar-bg)' }}
+                >
                   <span className="text-xs font-bold text-white">
                     {story.initials}
                   </span>
@@ -52,7 +56,7 @@ export function SuccessStories({
                 <p className="text-sm font-600 text-[var(--text-primary)]">
                   {story.author}
                 </p>
-                <p className="text-xs text-primary-600 font-500">
+                <p className="text-xs font-medium" style={{ color: 'var(--result-color)' }}>
                   {story.result}
                 </p>
               </div>

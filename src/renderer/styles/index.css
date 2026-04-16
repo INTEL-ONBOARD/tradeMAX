@@ -49,6 +49,8 @@
   --color-info-border:  rgba(239, 68, 68, 0.25);
 
   --sidebar-width: 68px;
+  --avatar-bg: #DC2626;
+  --result-color: #EF4444;
   --trend-up: #10B981;
   --trend-down: #F43F5E;
   --trend-neutral: #6B7280;
@@ -93,6 +95,8 @@
   --color-info-border:  rgba(220, 38, 38, 0.2);
 
   --sidebar-width: 68px;
+  --avatar-bg: #DC2626;
+  --result-color: #DC2626;
   --trend-up: #059669;
   --trend-down: #DC2626;
   --trend-neutral: #6B7280;
