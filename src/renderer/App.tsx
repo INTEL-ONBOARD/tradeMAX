@@ -37,7 +37,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const api = (window as any).api;
+    const api = window.api;
     if (!api) return;
     const unsubs: (() => void)[] = [];
 
@@ -54,11 +54,21 @@ export default function App() {
         const data = d as { session: UserSession; settings: UserSettings };
         store.setUser(data.session);
         store.setSettings(data.settings);
-        // Prefer localStorage theme; fall back to server preference
         const savedPref = localStorage.getItem("theme-preference") as "dark" | "light" | null;
         const theme = savedPref ?? data.settings.themePreference ?? "light";
         store.setTheme(theme);
         store.setScreen("dashboard");
+
+        // Auto-fetch portfolio and positions if exchange keys are configured
+        if (data.settings.hasBinanceKeys || data.settings.hasBybitKeys) {
+          api.invoke("portfolio:get").then((p: any) => {
+            if (p) store.setPortfolio(p as PortfolioSnapshot);
+          }).catch(() => {});
+          api.invoke("positions:get").then((pos: any) => {
+            const arr = pos as Position[];
+            if (arr.length > 0) store.setPositions(arr);
+          }).catch(() => {});
+        }
       })
     );
 
