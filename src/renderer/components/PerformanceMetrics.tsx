@@ -68,12 +68,15 @@ export function PerformanceMetrics({ filter = "ALL" }: PerformanceMetricsProps) 
   const stdDev = Math.sqrt(variance);
   const sharpe = stdDev > 0 ? (mean / stdDev) * Math.sqrt(252) : 0;
 
+  const avgTradeSize =
+    closedTrades.reduce((s, t) => s + t.quantity * t.entryPrice, 0) / closedTrades.length;
+
   const fmt = (n: number) => n >= 0 ? `+$${n.toFixed(2)}` : `-$${Math.abs(n).toFixed(2)}`;
   const profitColor = "var(--color-profit)";
   const lossColor = "var(--color-loss)";
 
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-3 gap-2">
       <StatCard label="Win Rate" value={`${winRate.toFixed(1)}%`} color={winRate >= 50 ? profitColor : lossColor} />
       <StatCard label="Total Trades" value={closedTrades.length.toString()} />
       <StatCard label="Best Trade" value={fmt(bestTrade)} color={profitColor} />
@@ -82,6 +85,7 @@ export function PerformanceMetrics({ filter = "ALL" }: PerformanceMetricsProps) 
       <StatCard label="Profit Factor" value={profitFactor === Infinity ? "∞" : profitFactor.toFixed(2)} color={profitFactor >= 1 ? profitColor : lossColor} />
       <StatCard label="Max Drawdown" value={`$${maxDD.toFixed(2)}`} color={lossColor} />
       <StatCard label="Sharpe Ratio" value={sharpe.toFixed(2)} color={sharpe >= 1 ? profitColor : sharpe >= 0 ? "var(--text-primary)" : lossColor} />
+      <StatCard label="Avg Trade Size" value={`$${avgTradeSize.toFixed(2)}`} />
     </div>
   );
 }
