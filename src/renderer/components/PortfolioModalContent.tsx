@@ -305,16 +305,16 @@ export function PortfolioModalContent() {
         </div>
       </div>
 
-      {/* Equity Curve (trade-based) */}
-      <div className="px-5 pt-3">
-        <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium mb-2">Equity Curve</p>
-        <EquityCurveChart />
-      </div>
-
-      {/* Performance Metrics */}
-      <div className="px-5 pt-3 pb-1">
-        <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium mb-2">Performance</p>
-        <PerformanceMetrics />
+      {/* Equity Curve + Performance — side by side */}
+      <div className="grid grid-cols-2 gap-4 px-5 pt-3 pb-1">
+        <div>
+          <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium mb-2">Equity Curve</p>
+          <EquityCurveChart />
+        </div>
+        <div>
+          <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium mb-2">Performance</p>
+          <PerformanceMetrics />
+        </div>
       </div>
 
       {/* Bottom stats grid */}
