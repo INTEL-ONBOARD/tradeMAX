@@ -77,20 +77,25 @@ export async function getAIDecision(
       const timeout = setTimeout(() => controller.abort(), ENGINE.AI_TIMEOUT_MS);
 
       try {
-        const response = await getClient(apiKey, resolvedModel).messages.create(
-          {
-            model: resolvedModel,
-            max_tokens: 512,
-            system: SYSTEM_PROMPT,
-            messages: [
-              {
-                role: "user",
-                content: JSON.stringify(data, null, 2),
-              },
-            ],
-          },
-          { signal: controller.signal },
-        );
+        const response = await Promise.race([
+          getClient(apiKey, resolvedModel).messages.create(
+            {
+              model: resolvedModel,
+              max_tokens: 512,
+              system: SYSTEM_PROMPT,
+              messages: [
+                {
+                  role: "user",
+                  content: JSON.stringify(data, null, 2),
+                },
+              ],
+            },
+            { signal: controller.signal },
+          ),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("AI request timed out")), ENGINE.AI_TIMEOUT_MS),
+          ),
+        ]);
 
         const text = response.content[0];
         if (text.type !== "text") {
