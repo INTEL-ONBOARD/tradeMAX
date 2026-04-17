@@ -2,22 +2,32 @@ import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Card } from "./Card";
 import { useAppStore } from "../store/appStore";
-import type { Trade } from "../../shared/types";
 import { BarChart2, Bot, User, Download, Search } from "./icons";
 
-function exportToCSV(trades: Trade[]) {
-  const headers = ["Date", "Symbol", "Side", "Type", "Entry", "Exit", "Qty", "PnL", "Status", "Exchange", "Source"];
+interface TradeRow {
+  id: string;
+  symbol: string;
+  side: "BUY" | "SELL";
+  source: string;
+  pnl: number | null;
+  status: string;
+  entryPrice: number;
+  exitPrice: number | null;
+  quantity: number;
+  time: string;
+}
+
+function exportToCSV(trades: TradeRow[]) {
+  const headers = ["Date", "Symbol", "Side", "Entry", "Exit", "Qty", "PnL", "Status", "Source"];
   const rows = trades.map(t => [
-    t.closedAt || t.createdAt,
+    t.time,
     t.symbol,
     t.side,
-    t.type,
     t.entryPrice.toFixed(2),
     t.exitPrice?.toFixed(2) ?? "",
     t.quantity.toFixed(6),
     t.pnl?.toFixed(2) ?? "",
     t.status,
-    t.exchange,
     t.source,
   ]);
   const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
@@ -31,7 +41,40 @@ function exportToCSV(trades: Trade[]) {
 }
 
 export function TradesPanel() {
-  const trades = useAppStore((s) => s.trades);
+  const agentTrades = useAppStore((s) => s.trades);
+  const exchangeHistory = useAppStore((s) => s.exchangeHistory);
+
+  // Merge agent trades (local DB) + exchange history (Bybit API), sorted newest first
+  const allTrades = useMemo<TradeRow[]>(() => {
+    const fromAgent: TradeRow[] = agentTrades.map((t) => ({
+      id: t._id,
+      symbol: t.symbol,
+      side: t.side,
+      source: t.source,
+      pnl: t.pnl,
+      status: t.status,
+      entryPrice: t.entryPrice,
+      exitPrice: t.exitPrice,
+      quantity: t.quantity,
+      time: t.closedAt || t.createdAt,
+    }));
+    const fromExchange: TradeRow[] = exchangeHistory.map((t, i) => ({
+      id: `ex-${i}`,
+      symbol: t.symbol,
+      side: t.side,
+      source: "EXCHANGE",
+      pnl: t.pnl,
+      status: "CLOSED",
+      entryPrice: t.entryPrice,
+      exitPrice: t.exitPrice,
+      quantity: t.quantity,
+      time: t.closedAt,
+    }));
+    // Deduplicate: if agent trade matches exchange trade (same symbol, similar time), keep agent version
+    const agentKeys = new Set(fromAgent.map((t) => `${t.symbol}-${Math.floor(new Date(t.time).getTime() / 5000)}`));
+    const unique = fromExchange.filter((t) => !agentKeys.has(`${t.symbol}-${Math.floor(new Date(t.time).getTime() / 5000)}`));
+    return [...fromAgent, ...unique].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  }, [agentTrades, exchangeHistory]);
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [sideFilter, setSideFilter] = useState("all");
@@ -40,15 +83,15 @@ export function TradesPanel() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const filteredTrades = useMemo(() => {
-    return trades.filter(t => {
+    return allTrades.filter(t => {
       if (statusFilter !== "all" && t.status !== statusFilter) return false;
       if (sideFilter !== "all" && t.side !== sideFilter) return false;
       if (searchTerm && !t.symbol.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-      if (dateFrom && new Date(t.createdAt) < new Date(dateFrom)) return false;
-      if (dateTo && new Date(t.createdAt) > new Date(dateTo + "T23:59:59")) return false;
+      if (dateFrom && new Date(t.time) < new Date(dateFrom)) return false;
+      if (dateTo && new Date(t.time) > new Date(dateTo + "T23:59:59")) return false;
       return true;
     });
-  }, [trades, statusFilter, sideFilter, searchTerm, dateFrom, dateTo]);
+  }, [allTrades, statusFilter, sideFilter, searchTerm, dateFrom, dateTo]);
 
   const selectClass = "px-2 py-1 text-[11px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--color-info)] transition-colors";
   const inputClass = "px-2 py-1 text-[11px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--color-info)] transition-colors";
@@ -62,59 +105,30 @@ export function TradesPanel() {
           <span className="section-label">Recent Trades</span>
         </div>
         <span className="badge-neutral">
-          {filteredTrades.length}{filteredTrades.length !== trades.length ? ` / ${trades.length}` : ""}
+          {filteredTrades.length}{filteredTrades.length !== allTrades.length ? ` / ${allTrades.length}` : ""}
         </span>
       </div>
 
       {/* Filter Bar */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className={selectClass}
-        >
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={selectClass}>
           <option value="all">All Status</option>
           <option value="OPEN">Open</option>
           <option value="CLOSED">Closed</option>
         </select>
 
-        <select
-          value={sideFilter}
-          onChange={e => setSideFilter(e.target.value)}
-          className={selectClass}
-        >
+        <select value={sideFilter} onChange={e => setSideFilter(e.target.value)} className={selectClass}>
           <option value="all">All Sides</option>
           <option value="BUY">BUY</option>
           <option value="SELL">SELL</option>
         </select>
 
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={e => setDateFrom(e.target.value)}
-          placeholder="From"
-          className={inputClass}
-          style={{ width: 110 }}
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={e => setDateTo(e.target.value)}
-          placeholder="To"
-          className={inputClass}
-          style={{ width: 110 }}
-        />
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={inputClass} style={{ width: 110 }} />
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={inputClass} style={{ width: 110 }} />
 
         <div className="relative">
           <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Symbol..."
-            className={`${inputClass} pl-6`}
-            style={{ width: 100 }}
-          />
+          <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Symbol..." className={`${inputClass} pl-6`} style={{ width: 100 }} />
         </div>
 
         <button
@@ -127,7 +141,7 @@ export function TradesPanel() {
         </button>
       </div>
 
-      {trades.length === 0 ? (
+      {allTrades.length === 0 ? (
         <div className="py-8 text-center">
           <BarChart2 size={28} className="text-[var(--text-tertiary)] mx-auto mb-2 opacity-40" />
           <p className="text-sm text-[var(--text-tertiary)]">No trades yet</p>
@@ -145,12 +159,7 @@ export function TradesPanel() {
             <thead className="sticky top-0 z-10" style={{ background: "var(--bg-surface)" }}>
               <tr className="border-b border-[var(--border)]">
                 {["Symbol", "Side", "Source", "PnL", "Status", "Time"].map((h) => (
-                  <th
-                    key={h}
-                    className={`pb-2.5 text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider ${
-                      ["PnL", "Time"].includes(h) ? "text-right" : "text-left"
-                    }`}
-                  >
+                  <th key={h} className={`pb-2.5 text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider ${["PnL", "Time"].includes(h) ? "text-right" : "text-left"}`}>
                     {h}
                   </th>
                 ))}
@@ -162,7 +171,7 @@ export function TradesPanel() {
                 const isProfitable = pnl >= 0;
                 return (
                   <motion.tr
-                    key={t._id}
+                    key={t.id}
                     initial={{ opacity: 0, x: -6 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: Math.min(i * 0.04, 0.3) }}
@@ -174,30 +183,22 @@ export function TradesPanel() {
                     </td>
                     <td className="py-2.5">
                       <span className={`inline-flex items-center gap-1 text-[11px] ${
-                        t.source === "AI" ? "text-[var(--color-info)]" : "text-[var(--text-secondary)]"
+                        t.source === "AI" ? "text-[var(--color-info)]" : t.source === "EXCHANGE" ? "text-[var(--text-secondary)]" : "text-[var(--text-secondary)]"
                       }`}>
                         {t.source === "AI" ? <Bot size={10} /> : <User size={10} />}
                         {t.source}
                       </span>
                     </td>
                     <td className={`py-2.5 text-right font-mono font-semibold ${
-                      t.pnl !== null
-                        ? isProfitable ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"
-                        : "text-[var(--text-tertiary)]"
+                      t.pnl !== null ? (isProfitable ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]") : "text-[var(--text-tertiary)]"
                     }`}>
                       {t.pnl !== null ? `${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}` : "—"}
                     </td>
                     <td className="py-2.5">
-                      <span className={
-                        t.status === "OPEN" ? "badge-info" :
-                        t.status === "CLOSED" ? "badge-neutral" :
-                        "badge-warn"
-                      }>
-                        {t.status}
-                      </span>
+                      <span className={t.status === "OPEN" ? "badge-info" : "badge-neutral"}>{t.status}</span>
                     </td>
                     <td className="py-2.5 text-right text-[var(--text-tertiary)] font-mono">
-                      {new Date(t.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(t.time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                     </td>
                   </motion.tr>
                 );
