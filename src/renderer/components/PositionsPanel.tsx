@@ -1,9 +1,26 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { useAppStore } from "../store/appStore";
+import { IPC } from "../../shared/constants";
 import { Layers } from "./icons";
 
 export function PositionsPanel() {
   const positions = useAppStore((s) => s.positions);
+  const [confirmingCloseAll, setConfirmingCloseAll] = useState(false);
+
+  const handleCloseAll = async () => {
+    if (!confirmingCloseAll) {
+      setConfirmingCloseAll(true);
+      setTimeout(() => setConfirmingCloseAll(false), 5000);
+      return;
+    }
+    try {
+      await window.api.invoke(IPC.AGENT_KILL_SWITCH);
+    } catch (err) {
+      console.error("Kill switch failed:", err);
+    }
+    setConfirmingCloseAll(false);
+  };
 
   return (
     <div className="w-full">
@@ -17,8 +34,11 @@ export function PositionsPanel() {
              {positions.length} active trade positions <span className="text-[var(--text-primary)] font-normal">tracking real-time market data</span>
           </span>
         </div>
-        <button className="bg-[var(--color-loss)] text-white px-6 py-2 rounded-sm text-xs font-semibold hover:bg-rose-600 transition-colors shadow">
-          Close All
+        <button
+          onClick={handleCloseAll}
+          className={`${confirmingCloseAll ? "bg-red-700 animate-pulse" : "bg-[var(--color-loss)]"} text-white px-6 py-2 rounded-sm text-xs font-semibold hover:bg-rose-600 transition-colors shadow`}
+        >
+          {confirmingCloseAll ? "Confirm Close All?" : "Close All"}
         </button>
       </div>
 
@@ -40,7 +60,6 @@ export function PositionsPanel() {
       {/* List Header */}
       <div className="flex items-center justify-between px-2 py-2 border-b border-[var(--border-strong)]">
         <div className="flex items-center gap-2">
-          <input type="checkbox" className="w-3.5 h-3.5 accent-[var(--color-warn)]" defaultChecked />
           <span className="text-xs text-[var(--text-tertiary)]">Active (total: {positions.length})</span>
         </div>
       </div>
@@ -59,8 +78,6 @@ export function PositionsPanel() {
               className="flex items-center justify-between p-3 border-b border-[var(--border)] hover:bg-[var(--bg-overlay)] transition-colors group cursor-pointer"
             >
               <div className="flex items-center gap-4">
-                <input type="checkbox" className="w-3.5 h-3.5 accent-[var(--color-warn)] opacity-50 group-hover:opacity-100 transition-opacity" defaultChecked />
-                
                 <div className="w-8 h-8 rounded-full bg-[var(--bg-inset)] flex items-center justify-center">
                   <span className={`text-[10px] font-bold ${p.side === "BUY" ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"}`}>
                     {p.side}
@@ -83,9 +100,12 @@ export function PositionsPanel() {
                    <p className="text-[10px] text-[var(--color-info)] font-mono mt-0.5">Mark: {p.markPrice.toLocaleString()}</p>
                 </div>
                 
-                <button className="flex items-center gap-3 px-6 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-strong)] text-[var(--text-primary)] text-xs font-medium rounded-sm group-hover:bg-[var(--bg-surface)] transition-colors">
+                <button
+                  disabled
+                  title="Close via exchange"
+                  className="flex items-center gap-3 px-6 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-strong)] text-[var(--text-tertiary)] text-xs font-medium rounded-sm cursor-not-allowed opacity-60"
+                >
                   Close
-                  <span className="text-[9px] text-[var(--text-tertiary)]">▼</span>
                 </button>
               </div>
             </motion.div>
