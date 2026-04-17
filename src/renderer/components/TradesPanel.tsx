@@ -17,27 +17,34 @@ interface TradeRow {
   time: string;
 }
 
-function exportToCSV(trades: TradeRow[]) {
-  const headers = ["Date", "Symbol", "Side", "Entry", "Exit", "Qty", "PnL", "Status", "Source"];
-  const rows = trades.map(t => [
-    t.time,
-    t.symbol,
-    t.side,
-    t.entryPrice.toFixed(2),
-    t.exitPrice?.toFixed(2) ?? "",
-    t.quantity.toFixed(6),
-    t.pnl?.toFixed(2) ?? "",
-    t.status,
-    t.source,
-  ]);
-  const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
+function downloadFile(content: string, filename: string, type: string) {
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `trademax-trades-${new Date().toISOString().split("T")[0]}.csv`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function exportToCSV(trades: TradeRow[]) {
+  const headers = ["Date", "Symbol", "Side", "Entry", "Exit", "Qty", "PnL", "Status", "Source"];
+  const rows = trades.map(t => [
+    t.time, t.symbol, t.side, t.entryPrice.toFixed(2),
+    t.exitPrice?.toFixed(2) ?? "", t.quantity.toFixed(6),
+    t.pnl?.toFixed(2) ?? "", t.status, t.source,
+  ]);
+  const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  downloadFile(csv, `trademax-trades-${new Date().toISOString().split("T")[0]}.csv`, "text/csv");
+}
+
+function exportToJSON(trades: TradeRow[]) {
+  const data = trades.map(t => ({
+    date: t.time, symbol: t.symbol, side: t.side,
+    entryPrice: t.entryPrice, exitPrice: t.exitPrice,
+    quantity: t.quantity, pnl: t.pnl, status: t.status, source: t.source,
+  }));
+  downloadFile(JSON.stringify(data, null, 2), `trademax-trades-${new Date().toISOString().split("T")[0]}.json`, "application/json");
 }
 
 export function TradesPanel() {
@@ -131,14 +138,24 @@ export function TradesPanel() {
           <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Symbol..." className={`${inputClass} pl-6`} style={{ width: 100 }} />
         </div>
 
-        <button
-          onClick={() => exportToCSV(filteredTrades)}
-          disabled={filteredTrades.length === 0}
-          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
-        >
-          <Download size={10} />
-          Export CSV
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            onClick={() => exportToCSV(filteredTrades)}
+            disabled={filteredTrades.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          >
+            <Download size={10} />
+            CSV
+          </button>
+          <button
+            onClick={() => exportToJSON(filteredTrades)}
+            disabled={filteredTrades.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          >
+            <Download size={10} />
+            JSON
+          </button>
+        </div>
       </div>
 
       {allTrades.length === 0 ? (

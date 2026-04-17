@@ -100,7 +100,22 @@ export const useAppStore = create<AppState>((set) => ({
 
   setPortfolio: (portfolio) => set({ portfolio }),
   setPositions: (positions) => set({ positions }),
-  addTrade: (t) => set((s) => ({ trades: [t, ...s.trades].slice(0, 50) })),
+  addTrade: (t) => set((s) => {
+    const updates: Partial<typeof s> = { trades: [t, ...s.trades].slice(0, 50) };
+    // When a trade closes, also append to exchangeHistory so equity curve + performance update in real-time
+    if (t.status === "CLOSED" && t.pnl !== null && t.exitPrice !== null && t.closedAt) {
+      updates.exchangeHistory = [...s.exchangeHistory, {
+        symbol: t.symbol,
+        side: t.side,
+        quantity: t.quantity,
+        entryPrice: t.entryPrice,
+        exitPrice: t.exitPrice,
+        pnl: t.pnl,
+        closedAt: t.closedAt,
+      }].sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
+    }
+    return updates;
+  }),
   setTrades: (trades) => set({ trades }),
   setExchangeHistory: (exchangeHistory) => set({ exchangeHistory }),
   setLastAIDecision: (d) => set({ lastAIDecision: d }),
