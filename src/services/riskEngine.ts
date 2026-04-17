@@ -15,7 +15,7 @@ const rules: RuleCheck[] = [
   {
     name: "MAX_RISK_PER_TRADE",
     check: (ctx) => {
-      const riskAmount = ctx.portfolio.totalBalance * (ctx.riskProfile.maxRiskPct / 100);
+      const riskAmount = ctx.portfolio.availableBalance * (ctx.riskProfile.maxRiskPct / 100);
       const tradeRisk = Math.abs(ctx.decision.entry - ctx.decision.stop_loss);
       if (tradeRisk <= 0) return { pass: false, reason: "Stop loss distance is zero or negative" };
       const maxQuantity = riskAmount / tradeRisk;
@@ -107,12 +107,13 @@ const rules: RuleCheck[] = [
     name: "MAX_LEVERAGE",
     check: (ctx) => {
       if (ctx.tradingMode !== "futures") return { pass: true, reason: "Spot mode — leverage check skipped" };
-      const pass = ctx.riskProfile.maxLeverage <= 125;
+      const safeLeverage = Math.min(ctx.riskProfile.maxLeverage, 20);
+      const pass = safeLeverage <= 20;
       return {
         pass,
         reason: pass
-          ? `Leverage ${ctx.riskProfile.maxLeverage}x within limit`
-          : `Leverage ${ctx.riskProfile.maxLeverage}x exceeds maximum`,
+          ? `Leverage ${safeLeverage}x within limit`
+          : `Leverage ${safeLeverage}x exceeds maximum`,
       };
     },
   },

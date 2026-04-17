@@ -515,8 +515,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <SettingRow label="Min AI Confidence" description="Minimum AI confidence score to execute (0 - 1)">
                     <NumberInput value={rp.minConfidence} min={0} max={1} step={0.05} onChange={(v) => updateRiskProfile("minConfidence", v)} />
                   </SettingRow>
-                  <SettingRow label="Max Leverage" description="Maximum leverage multiplier (1 - 125)">
-                    <NumberInput value={rp.maxLeverage} min={1} max={125} step={1} onChange={(v) => updateRiskProfile("maxLeverage", Math.round(v))} />
+                  <SettingRow label="Max Leverage" description="Maximum leverage multiplier (1 - 20)">
+                    <NumberInput value={rp.maxLeverage} min={1} max={20} step={1} onChange={(v) => updateRiskProfile("maxLeverage", Math.round(v))} />
                   </SettingRow>
                 </div>
               ) : (
