@@ -277,15 +277,32 @@ export class BybitService {
       try {
         if (msg.topic === "wallet") {
           const coins = msg.data as Array<{
-            coin: Array<{ coin: string; equity: string; availableToWithdraw: string }>;
+            coin: Array<{ coin: string; equity: string; totalPositionIM: string; availableToWithdraw: string }>;
             totalEquity: string;
             totalAvailableBalance: string;
           }>;
           const account = coins[0];
           if (account) {
+            let available = parseFloat(account.totalAvailableBalance || "0") || 0;
+            if (available === 0) {
+              const coinList = (account as any).coin as Array<{
+                coin: string; equity: string; totalPositionIM: string; availableToWithdraw: string;
+              }> | undefined;
+              const usdt = coinList?.find((c) => c.coin === "USDT");
+              if (usdt) {
+                const withdraw = parseFloat(usdt.availableToWithdraw || "0") || 0;
+                if (withdraw > 0) {
+                  available = withdraw;
+                } else {
+                  const equity = parseFloat(usdt.equity || "0") || 0;
+                  const positionIM = parseFloat(usdt.totalPositionIM || "0") || 0;
+                  available = Math.max(0, equity - positionIM);
+                }
+              }
+            }
             onPortfolio({
-              totalBalance: parseFloat(account.totalEquity ?? "0"),
-              availableBalance: parseFloat(account.totalAvailableBalance ?? "0"),
+              totalBalance: parseFloat(account.totalEquity || "0") || 0,
+              availableBalance: available,
               dailyPnl: 0,
               weeklyPnl: 0,
             });
