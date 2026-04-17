@@ -88,6 +88,12 @@ export function registerIpcHandlers(): void {
     if (!result) return null;
 
     setCurrentUserId(result.session.userId);
+
+    // Start real-time streaming if exchange keys are configured
+    if (result.settings.hasBinanceKeys || result.settings.hasBybitKeys) {
+      accountWatcher.start(result.session.userId).catch(() => {});
+    }
+
     return { session: result.session, settings: result.settings };
   });
 

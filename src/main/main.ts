@@ -2,9 +2,7 @@ import { app, BrowserWindow } from "electron";
 import path from "node:path";
 import dotenv from "dotenv";
 import { connectMongo } from "../db/mongoConnection.js";
-import { registerIpcHandlers, setMainWindow, setCurrentUserId } from "./ipc.js";
-import { getToken } from "./sessionManager.js";
-import * as auth from "../services/authService.js";
+import { registerIpcHandlers, setMainWindow } from "./ipc.js";
 
 dotenv.config();
 const isDev = process.env.VITE_DEV_SERVER_URL !== undefined;
@@ -42,26 +40,6 @@ async function createWindow(): Promise<void> {
   });
 }
 
-async function restoreSession(): Promise<void> {
-  const token = getToken();
-  if (!token || !mainWindow) return;
-
-  const result = await auth.restoreSession(token);
-  if (result) {
-    setCurrentUserId(result.session.userId);
-    mainWindow.webContents.send("session:restored", {
-      session: result.session,
-      settings: result.settings,
-    });
-
-    // Start real-time account streaming if exchange keys are configured
-    if (result.settings.hasBinanceKeys || result.settings.hasBybitKeys) {
-      const { accountWatcher } = await import("./accountWatcher.js");
-      accountWatcher.start(result.session.userId).catch(() => {});
-    }
-  }
-}
-
 app.whenReady().then(async () => {
   try {
     const mongoUri = process.env.MONGODB_URI;
@@ -75,7 +53,6 @@ app.whenReady().then(async () => {
   }
 
   await createWindow();
-  await restoreSession();
 });
 
 app.on("window-all-closed", () => {
