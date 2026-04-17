@@ -23,18 +23,16 @@ class AccountWatcher {
   }
 
   async start(userId: string): Promise<void> {
-    console.log("[ACCOUNT_WATCHER] start() called, running:", this.running, "hasCallbacks:", !!this.callbacks);
     if (this.running) return;
     if (!this.callbacks) return;
 
     try {
       const user = await getUserDoc(userId);
-      console.log("[ACCOUNT_WATCHER] selectedExchange:", user.selectedExchange);
 
       if (user.selectedExchange === "paper") return;
 
       const keys = user.exchangeKeys[user.selectedExchange];
-      if (!keys.apiKey || !keys.apiSecret) { console.log("[ACCOUNT_WATCHER] No keys found, aborting"); return; }
+      if (!keys.apiKey || !keys.apiSecret) return;
 
       const userSalt = user.encryptionSalt || undefined;
       const decryptedKey = decrypt(keys.apiKey, userSalt);
