@@ -104,7 +104,13 @@ export class PaperExchangeService {
       ? (fillPrice - pos.entryPrice) * quantity
       : (pos.entryPrice - fillPrice) * quantity;
 
-    this.virtualBalance += (this.mode === "spot" ? pos.entryPrice * quantity : 0) + pnl;
+    if (this.mode === "spot") {
+      // Restore original cost (entryPrice * quantity) plus PnL
+      this.virtualBalance += pos.entryPrice * quantity + pnl;
+    } else {
+      // Futures: just add PnL (no cost was deducted when opening)
+      this.virtualBalance += pnl;
+    }
     this.positions.splice(idx, 1);
 
     await logger.info("TRADE", `[PAPER] Closed ${side} ${symbol} PnL: $${pnl.toFixed(2)}`);
