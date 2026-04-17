@@ -350,7 +350,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const updateEngineConfig = async (field: string, value: string | number | boolean) => {
+  const updateEngineConfig = async (field: string, value: string | number | boolean | string[]) => {
     setSaveStatus("saving");
     try {
       const updated = await window.api.invoke(IPC.SETTINGS_UPDATE, {
@@ -584,6 +584,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         onChange={(v) => updateEngineConfig("aiModel", v)}
                       />
                     )}
+                  </SettingRow>
+                  <SettingRow label="Enable Multi-Model Voting" description="Use multiple AI models and aggregate their signals">
+                    <Toggle checked={ec.enableMultiModelVoting} onChange={(v) => updateEngineConfig("enableMultiModelVoting", v)} />
+                  </SettingRow>
+                  <SettingRow label="Voting Models" description="Comma-separated list of model IDs for voting">
+                    <TextInput
+                      value={(ec.votingModels ?? []).join(", ")}
+                      onChange={(v) => updateEngineConfig("votingModels", v.split(",").map((s) => s.trim()).filter(Boolean))}
+                    />
                   </SettingRow>
                   <SettingRow label="Max Consecutive Losses" description="Freeze after this many consecutive losing trades (1 - 20)">
                     <NumberInput value={ec.maxConsecutiveLosses} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("maxConsecutiveLosses", Math.round(v))} />
