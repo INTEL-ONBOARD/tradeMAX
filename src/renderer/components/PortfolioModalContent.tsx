@@ -57,25 +57,31 @@ export function PortfolioModalContent() {
   const svgRef = useRef<SVGSVGElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  // Build chart data from exchange history, filtered by time
-  const chartData = useMemo(() => {
+  // Filter exchange history by selected time range
+  const filteredHistory = useMemo(() => {
     const cutoff = FILTER_MS[activeFilter] ? Date.now() - FILTER_MS[activeFilter] : 0;
-    const filtered = exchangeHistory
+    return exchangeHistory
       .filter((t) => new Date(t.closedAt).getTime() >= cutoff)
       .sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
+  }, [exchangeHistory, activeFilter]);
 
-    if (filtered.length === 0) return [totalBalance, totalBalance];
+  // Build chart data from filtered history
+  const chartData = useMemo(() => {
+    if (filteredHistory.length === 0) return [totalBalance, totalBalance];
 
-    const filteredPnl = filtered.reduce((s, t) => s + t.pnl, 0);
+    const filteredPnl = filteredHistory.reduce((s, t) => s + t.pnl, 0);
     const startBalance = totalBalance - filteredPnl || totalBalance;
     const curve = [startBalance];
     let cum = 0;
-    for (const t of filtered) {
+    for (const t of filteredHistory) {
       cum += t.pnl;
       curve.push(startBalance + cum);
     }
     return curve;
-  }, [exchangeHistory, activeFilter, totalBalance]);
+  }, [filteredHistory, totalBalance]);
+
+  const filteredPnl = filteredHistory.reduce((s, t) => s + t.pnl, 0);
+  const hasFilteredData = filteredHistory.length > 0;
 
   // Chart geometry
   const W = 700;
@@ -137,13 +143,16 @@ export function PortfolioModalContent() {
             </motion.span>
           </AnimatePresence>
           <div className="flex items-center gap-1.5 mt-1">
-            {isProfitable ? (
+            {filteredPnl >= 0 ? (
               <TrendingUp size={12} className="text-[var(--color-profit)]" />
             ) : (
               <TrendingDown size={12} className="text-[var(--color-loss)]" />
             )}
-            <span className={`text-xs font-mono font-bold ${isProfitable ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"}`}>
-              {isProfitable ? "+" : ""}{dailyPnl.toFixed(2)} today
+            <span className={`text-xs font-mono font-bold ${filteredPnl >= 0 ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"}`}>
+              {filteredPnl >= 0 ? "+" : ""}{filteredPnl.toFixed(2)}
+            </span>
+            <span className="text-[10px] text-[var(--text-tertiary)]">
+              {hasFilteredData ? `${filteredHistory.length} trades` : "no trades"} in {activeFilter}
             </span>
           </div>
         </div>
@@ -175,6 +184,11 @@ export function PortfolioModalContent() {
 
         {/* SVG + overlays share same relative container (no padding mismatch) */}
         <div className="relative flex-1 min-h-0" ref={chartContainerRef}>
+          {!hasFilteredData && (
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <p className="text-xs text-[var(--text-tertiary)]">No trades in {activeFilter} window — try ALL</p>
+            </div>
+          )}
           <svg
             ref={svgRef}
             className="absolute inset-0 w-full h-full overflow-visible cursor-crosshair"
