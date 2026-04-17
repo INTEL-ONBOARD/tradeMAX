@@ -8,7 +8,7 @@ import { RISK_DEFAULTS, ENGINE_DEFAULTS } from "../shared/constants.js";
 import { ConfigSnapshotModel } from "../db/models/ConfigSnapshot.js";
 
 const SALT_ROUNDS = 12;
-const JWT_EXPIRY = "24h";
+const JWT_EXPIRY = "30d";
 
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
