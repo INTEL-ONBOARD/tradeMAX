@@ -1,33 +1,21 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useAppStore } from "../store/appStore";
 import { Wallet } from "./icons";
 
-const generateInitialData = (currentBalance: number) => {
-  const data: number[] = [];
-  for (let i = 0; i < 40; i++) {
-    data.push(currentBalance);
-  }
-  return data;
-};
-
-// Catmull-Rom spline for buttery smooth curves
 function catmullRomPath(points: { x: number; y: number }[]): string {
   if (points.length < 2) return "";
   const tension = 0.3;
   let d = `M ${points[0].x} ${points[0].y}`;
-
   for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[Math.max(i - 1, 0)];
     const p1 = points[i];
     const p2 = points[i + 1];
     const p3 = points[Math.min(i + 2, points.length - 1)];
-
     const cp1x = p1.x + (p2.x - p0.x) * tension;
     const cp1y = p1.y + (p2.y - p0.y) * tension;
     const cp2x = p2.x - (p3.x - p1.x) * tension;
     const cp2y = p2.y - (p3.y - p1.y) * tension;
-
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
   return d;
@@ -35,27 +23,50 @@ function catmullRomPath(points: { x: number; y: number }[]): string {
 
 export function PortfolioPanel() {
   const portfolio = useAppStore((s) => s.portfolio);
+  const exchangeHistory = useAppStore((s) => s.exchangeHistory);
   const totalBalance = portfolio?.totalBalance ?? 0;
-
   const dailyPnl = portfolio?.dailyPnl ?? 0;
   const isProfitable = dailyPnl >= 0;
 
-  const [chartData, setChartData] = useState<number[]>(generateInitialData(totalBalance));
+  // Build equity curve from exchange history + live balance
+  const historicalCurve = useMemo(() => {
+    if (exchangeHistory.length === 0) return [];
+    const sorted = [...exchangeHistory].sort(
+      (a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime()
+    );
+    const totalPnl = sorted.reduce((s, t) => s + t.pnl, 0);
+    const startBalance = totalBalance - totalPnl || totalBalance;
+    const curve = [startBalance];
+    let cum = 0;
+    for (const t of sorted) {
+      cum += t.pnl;
+      curve.push(startBalance + cum);
+    }
+    return curve;
+  }, [exchangeHistory, totalBalance]);
+
+  // Live balance trail — appends real-time balance changes on top of history
+  const [liveTail, setLiveTail] = useState<number[]>([]);
+  const prevBalance = useRef(totalBalance);
+
+  useEffect(() => {
+    if (Math.abs(prevBalance.current - totalBalance) > 0.01) {
+      setLiveTail((prev) => [...prev.slice(-20), totalBalance]);
+      prevBalance.current = totalBalance;
+    }
+  }, [totalBalance]);
+
+  // Combine: historical curve + live tail, capped at 40 points
+  const chartData = useMemo(() => {
+    const combined = [...historicalCurve, ...liveTail];
+    if (combined.length === 0) return [totalBalance, totalBalance];
+    if (combined.length === 1) return [combined[0], combined[0]];
+    return combined.slice(-40);
+  }, [historicalCurve, liveTail, totalBalance]);
+
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // Update chart with real portfolio balance changes
-  useEffect(() => {
-    setChartData((prev) => {
-      const lastVal = prev[prev.length - 1];
-      if (Math.abs(lastVal - totalBalance) > 0.01) {
-        return [...prev.slice(-39), totalBalance];
-      }
-      return prev;
-    });
-  }, [totalBalance]);
-
-  // Chart geometry
   const W = 400;
   const H = 120;
   const padT = 16;
@@ -78,7 +89,6 @@ export function PortfolioPanel() {
   const gradientId = isProfitable ? "areaGradProfit" : "areaGradLoss";
   const glowId = isProfitable ? "glowProfit" : "glowLoss";
 
-  // Hover handling
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -149,13 +159,11 @@ export function PortfolioPanel() {
           onMouseLeave={() => setHoveredIdx(null)}
         >
           <defs>
-            {/* Area gradient */}
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={chartColor} stopOpacity={0.25} />
               <stop offset="50%" stopColor={chartColor} stopOpacity={0.08} />
               <stop offset="100%" stopColor={chartColor} stopOpacity={0} />
             </linearGradient>
-            {/* Line glow */}
             <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
               <feGaussianBlur stdDeviation="3" result="blur" />
               <feMerge>
@@ -236,7 +244,6 @@ export function PortfolioPanel() {
           )}
         </AnimatePresence>
       </div>
-
     </div>
   );
 }
