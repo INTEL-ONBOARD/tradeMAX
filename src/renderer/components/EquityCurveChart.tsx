@@ -46,7 +46,7 @@ export function EquityCurveChart({ filter = "ALL" }: EquityCurveChartProps) {
     .filter((t) => new Date(t.closedAt).getTime() >= cutoff)
     .sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
 
-  if (filtered.length < 2) {
+  if (filtered.length === 0) {
     return (
       <div className="w-full h-[200px] flex items-center justify-center bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg">
         <p className="text-xs text-[var(--text-tertiary)]">
