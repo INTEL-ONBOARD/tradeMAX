@@ -62,6 +62,12 @@ export function registerIpcHandlers(): void {
     saveSession(result.token);
     setCurrentUserId(result.session.userId);
     await logger.info("AUTH", `User logged in: ${result.session.email}`);
+
+    // Start real-time account streaming if exchange keys are configured
+    if (result.settings.hasBinanceKeys || result.settings.hasBybitKeys) {
+      accountWatcher.start(result.session.userId).catch(() => {});
+    }
+
     return { session: result.session, settings: result.settings };
   });
 
@@ -74,7 +80,15 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC.AUTH_SESSION, async () => {
-    return null;
+    const { getToken } = await import("./sessionManager.js");
+    const token = getToken();
+    if (!token) return null;
+
+    const result = await auth.restoreSession(token);
+    if (!result) return null;
+
+    setCurrentUserId(result.session.userId);
+    return { session: result.session, settings: result.settings };
   });
 
   // ─── Settings ────────────────────────────────────────
@@ -140,6 +154,15 @@ export function registerIpcHandlers(): void {
     if (!currentUserId) throw new Error("Not authenticated");
     const parsed = settingsUpdateSchema.parse(data);
     const settings = await auth.updateSettings(currentUserId, parsed);
+
+    // Restart accountWatcher if exchange changed (streams from wrong exchange otherwise)
+    if ((parsed as any).selectedExchange && !tradeEngine.isRunning()) {
+      await accountWatcher.stop();
+      if (settings.hasBinanceKeys || settings.hasBybitKeys) {
+        accountWatcher.start(currentUserId).catch(() => {});
+      }
+    }
+
     return settings;
   });
 
