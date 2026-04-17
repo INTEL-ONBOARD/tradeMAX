@@ -342,6 +342,9 @@ export class TradeEngine {
         });
         this.cachedDailyPnl = todaysTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
         this.dailyPnlCycleCounter = 0;
+
+        // Reset daily loss alert flag so it can fire again for the new day
+        alertService.resetDaily();
       }
       portfolio.dailyPnl = this.cachedDailyPnl;
 
@@ -454,6 +457,14 @@ export class TradeEngine {
         }
       }
 
+      // [7.5] Cleanup stale trailing stop entries for trades no longer open
+      const openTradeIds = new Set(openTrades.map((t) => t._id.toString()));
+      for (const trackedId of this.trailingStops.keys()) {
+        if (!openTradeIds.has(trackedId)) {
+          this.trailingStops.delete(trackedId);
+        }
+      }
+
       // [8] Trade cooldown check
       const cooldownMs = this.engineConfig.tradeCooldownSec * 1000;
       if (cooldownMs > 0 && Date.now() - this.lastTradeTimestamp < cooldownMs) {
@@ -563,6 +574,17 @@ export class TradeEngine {
         }
       }
 
+      // [12b] Validate entry price is positive and within reasonable range of current price
+      if (decision.entry <= 0) {
+        await logger.warn("AI", "AI decision rejected: entry price is zero or negative", { decision });
+        return;
+      }
+      const entryDeviation = Math.abs((decision.entry - currentPrice) / currentPrice) * 100;
+      if (entryDeviation > 5) {
+        await logger.warn("AI", `AI decision rejected: entry price $${decision.entry} deviates ${entryDeviation.toFixed(2)}% from current price $${currentPrice}`, { decision });
+        return;
+      }
+
       // [13] 1h price change — calculate from candles with proper time window
       const oneHourAgo = Date.now() - 3600_000;
       const completedCandles = this.candleAggregator.getCandles();
@@ -626,7 +648,19 @@ export class TradeEngine {
       }
 
       // [17] Execute
-      const orderResult = await this.exchange.placeMarketOrder(this.symbol, decision.decision as "BUY" | "SELL", quantity);
+      let orderResult;
+      try {
+        orderResult = await this.exchange.placeMarketOrder(this.symbol, decision.decision as "BUY" | "SELL", quantity);
+      } catch (orderErr) {
+        const errMsg = orderErr instanceof Error ? orderErr.message : String(orderErr);
+        await logger.error("TRADE", `FAILED_ORDER: ${decision.decision} ${this.symbol} qty=${quantity} — ${errMsg}`, {
+          decision,
+          quantity,
+          error: errMsg,
+          riskResult,
+        });
+        return;
+      }
 
       // [18] Slippage check — log warning if fill price deviates significantly
       const fillPrice = orderResult.price || decision.entry;
