@@ -152,8 +152,32 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.SETTINGS_SAVE_CLAUDE_KEY, async (_e, data) => {
     if (!currentUserId) throw new Error("Not authenticated");
     const parsed = claudeKeySchema.parse(data);
+
+    // Validate the key by making a lightweight API call
+    try {
+      const { default: Anthropic } = await import("@anthropic-ai/sdk");
+      const client = new Anthropic({ apiKey: parsed.claudeApiKey });
+      await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1,
+        messages: [{ role: "user", content: "hi" }],
+      });
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      if (msg.includes("401") || msg.includes("authentication") || msg.includes("invalid")) {
+        throw new Error("Invalid Claude API key");
+      }
+      if (msg.includes("permission") || msg.includes("403")) {
+        throw new Error("Claude API key lacks required permissions");
+      }
+      if (msg.includes("ECONNREFUSED") || msg.includes("ETIMEDOUT") || msg.includes("fetch")) {
+        throw new Error("Could not connect to Anthropic API. Check your internet connection.");
+      }
+      throw new Error(`Claude API key validation failed: ${msg}`);
+    }
+
     const updated = await auth.saveClaudeKey(currentUserId, parsed.claudeApiKey);
-    await logger.info("SYSTEM", "Claude API key saved");
+    await logger.info("SYSTEM", "Claude API key validated and saved");
     return updated;
   });
 
@@ -291,6 +315,23 @@ export function registerIpcHandlers(): void {
   // ─── AI ──────────────────────────────────────────────
   ipcMain.handle(IPC.AI_LAST_DECISION, async () => {
     return tradeEngine.getLastAIDecision();
+  });
+
+  ipcMain.handle(IPC.AI_LIST_MODELS, async () => {
+    if (!currentUserId) throw new Error("Not authenticated");
+    const user = await auth.getUserDoc(currentUserId);
+    if (!user.claudeApiKey) throw new Error("No Claude API key configured");
+    const userSalt = user.encryptionSalt || undefined;
+    const apiKey = decrypt(user.claudeApiKey, userSalt);
+    const res = await fetch("https://api.anthropic.com/v1/models", {
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+    });
+    if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
+    const json = await res.json() as { data: { id: string; display_name: string }[] };
+    return json.data.map((m) => ({ id: m.id, name: m.display_name }));
   });
 
   // ─── Agent Control ───────────────────────────────────

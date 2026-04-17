@@ -104,7 +104,7 @@ function SelectInput({ value, options, onChange }: { value: string; options: str
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-24 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+      className="w-fit min-w-[6rem] px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
     >
       {options.map((opt) => (
         <option key={opt} value={opt}>{opt}</option>
@@ -229,16 +229,20 @@ function APIKeysTab() {
   const [claudeKey, setClaudeKey] = useState("");
   const [savedClaude, setSavedClaude] = useState(false);
   const [savingClaude, setSavingClaude] = useState(false);
+  const [claudeError, setClaudeError] = useState<string | null>(null);
 
   const handleSaveClaude = async () => {
     if (!claudeKey) return;
     setSavingClaude(true);
+    setClaudeError(null);
     try {
       const updated = await window.api.invoke(IPC.SETTINGS_SAVE_CLAUDE_KEY, { claudeApiKey: claudeKey });
       setSettings(updated as UserSettings);
       setClaudeKey("");
       setSavedClaude(true);
       setTimeout(() => setSavedClaude(false), 2500);
+    } catch (err: any) {
+      setClaudeError(err?.message ?? "Validation failed");
     } finally {
       setSavingClaude(false);
     }
@@ -263,9 +267,9 @@ function APIKeysTab() {
             }}
           >
             {savingClaude ? (
-              <><Loader2 size={11} className="animate-spin" /> Saving...</>
+              <><Loader2 size={11} className="animate-spin" /> Validating...</>
             ) : savedClaude ? (
-              <><CheckCircle size={11} /> Saved</>
+              <><CheckCircle size={11} /> Validated</>
             ) : (
               "Save"
             )}
@@ -284,10 +288,15 @@ function APIKeysTab() {
             <PasswordInput
               value={claudeKey}
               placeholder={settings?.hasClaudeKey ? "••••••••••••" : "sk-ant-..."}
-              onChange={setClaudeKey}
+              onChange={(v) => { setClaudeKey(v); setClaudeError(null); }}
             />
           </div>
         </SettingRow>
+        {claudeError && (
+          <div className="px-1 py-2">
+            <p className="text-[11px] text-[var(--color-loss)] font-medium">{claudeError}</p>
+          </div>
+        )}
       </div>
 
       {/* Bybit */}
@@ -356,6 +365,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const rp = settings?.riskProfile;
   const ec = settings?.engineConfig;
+
+  const [aiModels, setAiModels] = useState<{ id: string; name: string }[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== "engine" || aiModels.length > 0) return;
+    setModelsLoading(true);
+    (window as any).api.invoke(IPC.AI_LIST_MODELS)
+      .then((data: { id: string; name: string }[]) => setAiModels(data))
+      .catch(() => {})
+      .finally(() => setModelsLoading(false));
+  }, [activeTab]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Settings" width="750px" height="500px">
@@ -549,7 +570,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <NumberInput value={ec.aiRetryCount} min={0} max={5} step={1} onChange={(v) => updateEngineConfig("aiRetryCount", Math.round(v))} />
                   </SettingRow>
                   <SettingRow label="AI Model" description="AI model identifier for trade analysis">
-                    <TextInput value={ec.aiModel} onChange={(v) => updateEngineConfig("aiModel", v)} />
+                    {modelsLoading ? (
+                      <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
+                        <Loader2 size={12} className="animate-spin" /> Loading models...
+                      </span>
+                    ) : (
+                      <SelectInput
+                        value={ec.aiModel}
+                        options={aiModels.length > 0
+                          ? aiModels.map((m) => m.id)
+                          : [ec.aiModel]
+                        }
+                        onChange={(v) => updateEngineConfig("aiModel", v)}
+                      />
+                    )}
                   </SettingRow>
                   <SettingRow label="Max Consecutive Losses" description="Freeze after this many consecutive losing trades (1 - 20)">
                     <NumberInput value={ec.maxConsecutiveLosses} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("maxConsecutiveLosses", Math.round(v))} />
