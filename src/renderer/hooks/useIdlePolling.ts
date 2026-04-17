@@ -16,7 +16,7 @@ export function useIdlePolling() {
     const api = window.api;
     if (!api) return;
 
-    const hasKeys = settings?.hasBinanceKeys || settings?.hasBybitKeys;
+    const hasKeys = settings?.hasBybitKeys;
     const shouldPoll = !agentRunning && hasKeys && currentScreen === "dashboard";
 
     if (!shouldPoll) {

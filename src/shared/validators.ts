@@ -12,7 +12,7 @@ export const loginSchema = z.object({
 });
 
 export const apiKeysSchema = z.object({
-  exchange: z.enum(["binance", "bybit"]),
+  exchange: z.enum(["bybit", "paper"]),
   apiKey: z.string().min(1),
   apiSecret: z.string().min(1),
 });
@@ -37,10 +37,19 @@ export const engineConfigSchema = z.object({
   wsReconnectRetries: z.number().int().min(1).max(20).optional(),
   enableEMA: z.boolean().optional(),
   enableBollingerBands: z.boolean().optional(),
+  enableADX: z.boolean().optional(),
+  enableATR: z.boolean().optional(),
+  enableStochastic: z.boolean().optional(),
+  enableTrailingStop: z.boolean().optional(),
+  trailingStopPct: z.number().min(0.1).max(10).optional(),
+  paperStartingBalance: z.number().min(100).max(1000000).optional(),
+  watchlist: z.array(z.string().toUpperCase()).max(10).optional(),
+  enableMultiModelVoting: z.boolean().optional(),
+  votingModels: z.array(z.string()).max(3).optional(),
 });
 
 export const settingsUpdateSchema = z.object({
-  selectedExchange: z.enum(["binance", "bybit"]).optional(),
+  selectedExchange: z.enum(["bybit", "paper"]).optional(),
   tradingMode: z.enum(["spot", "futures"]).optional(),
   agentModeEnabled: z.boolean().optional(),
   themePreference: z.enum(["dark", "light"]).optional(),

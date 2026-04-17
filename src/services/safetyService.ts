@@ -1,4 +1,5 @@
 import { logger } from "./loggerService.js";
+import { alertService } from "./alertService.js";
 import { saveSafetyState, getSafetyState } from "../main/sessionManager.js";
 import { ENGINE_DEFAULTS } from "../shared/constants.js";
 import type { SafetyState } from "../shared/types.js";
@@ -88,6 +89,7 @@ class SafetyService {
     this.state.frozenReason = reason;
     this.persist();
     this.onFreezeCallback?.(reason);
+    alertService.onSafetyFreeze(reason);
   }
 
   activateKillSwitch(): void {

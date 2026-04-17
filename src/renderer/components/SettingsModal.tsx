@@ -146,7 +146,7 @@ function SaveButton({ onClick, disabled, saved, label }: { onClick: () => void; 
   );
 }
 
-function ExchangeKeyRow({ exchange }: { exchange: "binance" | "bybit" }) {
+function ExchangeKeyRow({ exchange }: { exchange: "bybit" }) {
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
   const setPortfolio = useAppStore((s) => s.setPortfolio);
@@ -156,7 +156,7 @@ function ExchangeKeyRow({ exchange }: { exchange: "binance" | "bybit" }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasKeys = exchange === "binance" ? settings?.hasBinanceKeys : settings?.hasBybitKeys;
+  const hasKeys = settings?.hasBybitKeys;
 
   const handleSave = async () => {
     if (!apiKey || !apiSecret) return;
@@ -288,14 +288,6 @@ function APIKeysTab() {
             />
           </div>
         </SettingRow>
-      </div>
-
-      {/* Binance */}
-      <div>
-        <h3 className="text-[14px] font-semibold text-[var(--text-primary)] border-b border-[var(--border)] pb-2">
-          Binance API Keys
-        </h3>
-        <ExchangeKeyRow exchange="binance" />
       </div>
 
       {/* Bybit */}

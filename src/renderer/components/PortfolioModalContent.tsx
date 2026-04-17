@@ -2,6 +2,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "../store/appStore";
 import { TrendingUp, TrendingDown } from "./icons";
+import { EquityCurveChart } from "./EquityCurveChart";
+import { PerformanceMetrics } from "./PerformanceMetrics";
 
 const TIME_FILTERS = ["1H", "4H", "1D", "1W", "1M", "ALL"] as const;
 
@@ -301,6 +303,18 @@ export function PortfolioModalContent() {
         <div className="flex justify-between mt-1 px-1">
           <span className="text-[9px] font-mono text-[var(--text-tertiary)]">${chartMin}</span>
         </div>
+      </div>
+
+      {/* Equity Curve (trade-based) */}
+      <div className="px-5 pt-3">
+        <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium mb-2">Equity Curve</p>
+        <EquityCurveChart />
+      </div>
+
+      {/* Performance Metrics */}
+      <div className="px-5 pt-3 pb-1">
+        <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium mb-2">Performance</p>
+        <PerformanceMetrics />
       </div>
 
       {/* Bottom stats grid */}

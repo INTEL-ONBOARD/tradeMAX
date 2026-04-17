@@ -61,7 +61,6 @@ function toSettings(user: IUser): UserSettings {
     agentModeEnabled: user.agentModeEnabled,
     themePreference: user.themePreference,
     hasClaudeKey: !!user.claudeApiKey,
-    hasBinanceKeys: !!(user.exchangeKeys.binance.apiKey && user.exchangeKeys.binance.apiSecret),
     hasBybitKeys: !!(user.exchangeKeys.bybit.apiKey && user.exchangeKeys.bybit.apiSecret),
   }));
 }
@@ -123,7 +122,7 @@ export async function restoreSession(token: string): Promise<{ session: UserSess
   }
 }
 
-export async function saveApiKeys(userId: string, exchange: "binance" | "bybit", apiKey: string, apiSecret: string): Promise<UserSettings> {
+export async function saveApiKeys(userId: string, exchange: "bybit", apiKey: string, apiSecret: string): Promise<UserSettings> {
   const user = await User.findById(userId);
   if (!user) throw new Error("USER_NOT_FOUND");
   const userSalt = user.encryptionSalt || undefined;

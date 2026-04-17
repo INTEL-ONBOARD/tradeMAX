@@ -11,7 +11,7 @@ export interface ITrade extends Document {
   pnl: number | null;
   status: "OPEN" | "CLOSED";
   source: "AI" | "MANUAL" | "SYSTEM";
-  exchange: "binance" | "bybit";
+  exchange: "bybit" | "paper";
   mode: "spot" | "futures";
   aiDecision: Record<string, unknown> | null;
   riskCheck: Record<string, unknown> | null;
@@ -31,7 +31,7 @@ const tradeSchema = new Schema<ITrade>(
     pnl: { type: Number, default: null },
     status: { type: String, enum: ["OPEN", "CLOSED"], default: "OPEN", index: true },
     source: { type: String, enum: ["AI", "MANUAL", "SYSTEM"], default: "AI" },
-    exchange: { type: String, enum: ["binance", "bybit"], required: true },
+    exchange: { type: String, enum: ["bybit", "paper"], required: true },
     mode: { type: String, enum: ["spot", "futures"], required: true },
     aiDecision: { type: Schema.Types.Mixed, default: null },
     riskCheck: { type: Schema.Types.Mixed, default: null },
@@ -42,5 +42,6 @@ const tradeSchema = new Schema<ITrade>(
 
 tradeSchema.index({ userId: 1, status: 1, closedAt: -1 });
 tradeSchema.index({ userId: 1, status: 1 });
+tradeSchema.index({ closedAt: 1 }); // For archival queries
 
 export const TradeModel = mongoose.model<ITrade>("Trade", tradeSchema);

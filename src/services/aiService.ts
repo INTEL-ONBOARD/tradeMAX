@@ -23,6 +23,12 @@ CRITICAL RULES for stop_loss and take_profit:
 
 The input data may include additional indicators (EMA, Bollinger Bands), recent candle history, recent trade outcomes, and spread information. Use all available data to inform your decision.
 
+If a marketRegime field is present, adapt your strategy:
+- "trending_up": favor BUY positions with wider take-profits
+- "trending_down": favor SELL positions with wider take-profits
+- "ranging": prefer HOLD unless strong signals at support/resistance
+- "volatile": tighten stop-losses and reduce position confidence
+
 No markdown, no code blocks, no extra text. Only the raw JSON object.`;
 
 const HOLD_FALLBACK: AIDecision = {

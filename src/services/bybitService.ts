@@ -34,9 +34,14 @@ export class BybitService {
     if (!this.rest) throw new Error("Bybit not initialized");
 
     const { result } = await this.rest.getWalletBalance({ accountType: "UNIFIED" });
+    console.log("[BYBIT DEBUG] getWalletBalance result:", JSON.stringify(result, null, 2));
     const account = result.list?.[0];
-    if (!account) return { totalBalance: 0, availableBalance: 0, dailyPnl: 0, weeklyPnl: 0 };
+    if (!account) {
+      console.log("[BYBIT DEBUG] No account found in result.list");
+      return { totalBalance: 0, availableBalance: 0, dailyPnl: 0, weeklyPnl: 0 };
+    }
 
+    console.log("[BYBIT DEBUG] totalEquity:", account.totalEquity, "totalAvailableBalance:", account.totalAvailableBalance);
     return {
       totalBalance: parseFloat(account.totalEquity ?? "0"),
       availableBalance: parseFloat(account.totalAvailableBalance ?? "0"),

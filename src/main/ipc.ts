@@ -64,7 +64,7 @@ export function registerIpcHandlers(): void {
     await logger.info("AUTH", `User logged in: ${result.session.email}`);
 
     // Start real-time account streaming if exchange keys are configured
-    if (result.settings.hasBinanceKeys || result.settings.hasBybitKeys) {
+    if (result.settings.hasBybitKeys) {
       accountWatcher.start(result.session.userId).catch(() => {});
     }
 
@@ -96,7 +96,7 @@ export function registerIpcHandlers(): void {
     }
 
     // Start real-time streaming if exchange keys are configured
-    if (result.settings.hasBinanceKeys || result.settings.hasBybitKeys) {
+    if (result.settings.hasBybitKeys) {
       accountWatcher.start(result.session.userId).catch(() => {});
     }
 
@@ -170,7 +170,7 @@ export function registerIpcHandlers(): void {
     // Restart accountWatcher if exchange changed (streams from wrong exchange otherwise)
     if ((parsed as any).selectedExchange && !tradeEngine.isRunning()) {
       await accountWatcher.stop();
-      if (settings.hasBinanceKeys || settings.hasBybitKeys) {
+      if (settings.hasBybitKeys) {
         accountWatcher.start(currentUserId).catch(() => {});
       }
     }
@@ -386,7 +386,7 @@ export function registerIpcHandlers(): void {
     const result = await runBacktest(
       {
         symbol: config.symbol,
-        exchange: user.selectedExchange === "paper" ? "binance" : user.selectedExchange,
+        exchange: "bybit",
         mode: user.tradingMode,
         startDate: config.startDate,
         endDate: config.endDate,

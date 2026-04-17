@@ -1,8 +1,10 @@
-import { RSI, MACD, EMA, BollingerBands } from "technicalindicators";
+import { RSI, MACD, EMA, BollingerBands, ADX, ATR, Stochastic } from "technicalindicators";
 import { createExchangeService, type ExchangeServiceInstance } from "./exchangeFactory.js";
 import { getAIDecision } from "./aiService.js";
+import { getVotedDecision } from "./votingService.js";
 import { validateTrade, type RiskOptions } from "./riskEngine.js";
 import { safetyService } from "./safetyService.js";
+import { alertService } from "./alertService.js";
 import { logger } from "./loggerService.js";
 import { decrypt } from "./encryptionService.js";
 import { getUserDoc } from "./authService.js";
@@ -43,6 +45,9 @@ export class TradeEngine {
   private claudeApiKey: string | undefined = undefined;
   private engineConfig: EngineConfig | null = null;
 
+  // Trailing stop tracking: tradeId -> best price seen since entry
+  private trailingStops: Map<string, number> = new Map();
+
   // Trade cooldown tracking
   private lastTradeTimestamp = 0;
 
@@ -81,6 +86,7 @@ export class TradeEngine {
     this.lastTradeTimestamp = 0;
     this.cachedDailyPnl = 0;
     this.dailyPnlCycleCounter = 0;
+    this.trailingStops.clear();
 
     // Load user's engine config
     this.engineConfig = user.engineConfig;
@@ -98,20 +104,32 @@ export class TradeEngine {
     });
 
     const selectedExchange = user.selectedExchange;
-    const keys = user.exchangeKeys[selectedExchange];
-    if (!keys.apiKey || !keys.apiSecret) {
-      throw new Error(`No API keys configured for ${selectedExchange}`);
-    }
-
+    const isPaper = selectedExchange === "paper";
     const userSalt = user.encryptionSalt || undefined;
-    const decryptedKey = decrypt(keys.apiKey, userSalt);
-    const decryptedSecret = decrypt(keys.apiSecret, userSalt);
+
+    let decryptedKey = "";
+    let decryptedSecret = "";
+
+    if (!isPaper) {
+      const keys = user.exchangeKeys.bybit;
+      if (!keys.apiKey || !keys.apiSecret) {
+        throw new Error(`No API keys configured for ${selectedExchange}`);
+      }
+      decryptedKey = decrypt(keys.apiKey, userSalt);
+      decryptedSecret = decrypt(keys.apiSecret, userSalt);
+    }
 
     // Decrypt Claude API key if user has one stored
     this.claudeApiKey = user.claudeApiKey ? decrypt(user.claudeApiKey, userSalt) : undefined;
 
     this.exchange = createExchangeService(selectedExchange);
     await this.exchange.initialize({ apiKey: decryptedKey, apiSecret: decryptedSecret }, user.tradingMode);
+
+    // Set starting balance for paper trading
+    if (isPaper && "setStartingBalance" in this.exchange) {
+      (this.exchange as import("./paperExchangeService.js").PaperExchangeService)
+        .setStartingBalance(this.engineConfig.paperStartingBalance ?? 10000);
+    }
 
     // Initialize candle aggregator with user's timeframe
     this.candleAggregator = new CandleAggregator(
@@ -243,6 +261,53 @@ export class TradeEngine {
         }
       }
 
+      // Optional ADX
+      let adx: number | undefined;
+      if (this.engineConfig.enableADX) {
+        const candles = this.candleAggregator.getCandles();
+        if (candles.length >= 14) {
+          const adxResult = ADX.calculate({
+            high: candles.map(c => c.high),
+            low: candles.map(c => c.low),
+            close: candles.map(c => c.close),
+            period: 14,
+          });
+          adx = adxResult[adxResult.length - 1]?.adx;
+        }
+      }
+
+      // Optional ATR
+      let atr: number | undefined;
+      if (this.engineConfig.enableATR) {
+        const candles = this.candleAggregator.getCandles();
+        if (candles.length >= 14) {
+          const atrResult = ATR.calculate({
+            high: candles.map(c => c.high),
+            low: candles.map(c => c.low),
+            close: candles.map(c => c.close),
+            period: 14,
+          });
+          atr = atrResult[atrResult.length - 1];
+        }
+      }
+
+      // Optional Stochastic
+      let stochastic: { k: number; d: number } | undefined;
+      if (this.engineConfig.enableStochastic) {
+        const candles = this.candleAggregator.getCandles();
+        if (candles.length >= 14) {
+          const stochResult = Stochastic.calculate({
+            high: candles.map(c => c.high),
+            low: candles.map(c => c.low),
+            close: candles.map(c => c.close),
+            period: 14,
+            signalPeriod: 3,
+          });
+          const last = stochResult[stochResult.length - 1];
+          if (last) stochastic = { k: last.k, d: last.d };
+        }
+      }
+
       // [4] Portfolio
       let portfolio: PortfolioSnapshot;
       try {
@@ -250,6 +315,7 @@ export class TradeEngine {
         this.apiFailures = 0;
       } catch (err) {
         this.apiFailures++;
+        alertService.onApiError(this.symbol, this.apiFailures, ENGINE.EXCHANGE_RETRY_COUNT);
         if (this.apiFailures >= ENGINE.EXCHANGE_RETRY_COUNT) {
           safetyService.reportApiFailure();
           this.emitStatus();
@@ -297,6 +363,7 @@ export class TradeEngine {
       for (const trade of openTrades) {
         if (!trade.aiDecision) continue;
         const ai = trade.aiDecision as { stop_loss: number; take_profit: number };
+        if (typeof ai.stop_loss !== "number" || typeof ai.take_profit !== "number") continue;
 
         // SL/TP contract:
         // BUY: SL is below entry (triggers when price drops to/below SL), TP is above entry
@@ -305,11 +372,33 @@ export class TradeEngine {
         let hitTP = false;
 
         if (trade.side === "BUY") {
-          hitSL = currentPrice <= ai.stop_loss;
+          if (this.engineConfig.enableTrailingStop) {
+            const tradeId = trade._id.toString();
+            const bestSoFar = this.trailingStops.get(tradeId);
+            const newBest = Math.max(bestSoFar ?? trade.entryPrice, currentPrice);
+            this.trailingStops.set(tradeId, newBest);
+            const trailingSL = newBest * (1 - this.engineConfig.trailingStopPct / 100);
+            // Use the higher (better) stop loss
+            const effectiveSL = Math.max(ai.stop_loss, trailingSL);
+            hitSL = currentPrice <= effectiveSL;
+          } else {
+            hitSL = currentPrice <= ai.stop_loss;
+          }
           hitTP = currentPrice >= ai.take_profit;
         } else {
           // SELL/short: SL is ABOVE entry, TP is BELOW entry
-          hitSL = currentPrice >= ai.stop_loss;
+          if (this.engineConfig.enableTrailingStop) {
+            const tradeId = trade._id.toString();
+            const bestSoFar = this.trailingStops.get(tradeId);
+            const newBest = Math.min(bestSoFar ?? trade.entryPrice, currentPrice);
+            this.trailingStops.set(tradeId, newBest);
+            const trailingSL = newBest * (1 + this.engineConfig.trailingStopPct / 100);
+            // Use the lower (better) stop loss
+            const effectiveSL = Math.min(ai.stop_loss, trailingSL);
+            hitSL = currentPrice >= effectiveSL;
+          } else {
+            hitSL = currentPrice >= ai.stop_loss;
+          }
           hitTP = currentPrice <= ai.take_profit;
         }
 
@@ -327,6 +416,9 @@ export class TradeEngine {
             trade.closedAt = new Date();
             await trade.save();
 
+            // Clean up trailing stop tracking for closed trade
+            this.trailingStops.delete(trade._id.toString());
+
             // Update cached daily PnL immediately on close
             this.cachedDailyPnl += pnl;
 
@@ -335,6 +427,7 @@ export class TradeEngine {
 
             const reason = hitSL ? "STOP_LOSS" : "TAKE_PROFIT";
             await logger.info("TRADE", `Position closed via ${reason}: ${trade.symbol} PnL: ${pnl.toFixed(2)}`);
+            alertService.onPositionClosed(trade.symbol, reason, pnl);
 
             this.callbacks.onTradeExecuted?.({
               _id: trade._id.toString(),
@@ -348,7 +441,7 @@ export class TradeEngine {
               pnl,
               status: "CLOSED",
               source: trade.source as "AI" | "MANUAL" | "SYSTEM",
-              exchange: trade.exchange as "binance" | "bybit",
+              exchange: trade.exchange as "bybit" | "paper",
               mode: trade.mode as "spot" | "futures",
               aiDecision: trade.aiDecision as unknown as AIDecision | null,
               riskCheck: trade.riskCheck as Trade["riskCheck"],
@@ -396,9 +489,19 @@ export class TradeEngine {
           : "UNKNOWN",
       }));
 
+      // Detect market regime from indicators
+      let marketRegime: "trending_up" | "trending_down" | "ranging" | "volatile" | undefined;
+      if (adx !== undefined && atr !== undefined) {
+        const priceAboveEma = ema ? currentPrice > ema.ema26 : true;
+        if (adx > 25 && priceAboveEma) marketRegime = "trending_up";
+        else if (adx > 25 && !priceAboveEma) marketRegime = "trending_down";
+        else if (adx < 20) marketRegime = "ranging";
+        else marketRegime = "volatile";
+      }
+
       const promptData: AIPromptData = {
         symbol: this.symbol,
-        exchange: user.selectedExchange,
+        exchange: "bybit",
         mode: user.tradingMode,
         currentPrice,
         indicators: {
@@ -410,24 +513,39 @@ export class TradeEngine {
           },
           ema,
           bollingerBands,
+          adx,
+          atr,
+          stochastic,
         },
         recentCandles: this.candleAggregator.getRecentCandles(10),
         recentTradeOutcomes,
+        marketRegime,
         spread,
         portfolio,
         openPositions: positions,
         riskProfile: user.riskProfile,
       };
 
-      const decision = await getAIDecision(
-        promptData,
-        this.claudeApiKey,
-        this.engineConfig.aiModel,
-        this.engineConfig.aiRetryCount,
-      );
+      let decision: AIDecision;
+      if (this.engineConfig.enableMultiModelVoting && this.engineConfig.votingModels.length > 1) {
+        decision = await getVotedDecision(
+          promptData,
+          this.claudeApiKey,
+          this.engineConfig.votingModels as string[],
+          this.engineConfig.aiRetryCount,
+        );
+      } else {
+        decision = await getAIDecision(
+          promptData,
+          this.claudeApiKey,
+          this.engineConfig.aiModel,
+          this.engineConfig.aiRetryCount,
+        );
+      }
       this.lastAIDecision = decision;
       this.callbacks.onAIDecision?.(decision);
       await logger.info("AI", `Decision: ${decision.decision} (confidence: ${decision.confidence})`, { decision });
+      alertService.onAIDecision(decision.decision, decision.confidence, decision.reason);
 
       // [11] HOLD → skip
       if (decision.decision === "HOLD") return;
@@ -448,11 +566,27 @@ export class TradeEngine {
       // [13] 1h price change — calculate from candles with proper time window
       const oneHourAgo = Date.now() - 3600_000;
       const completedCandles = this.candleAggregator.getCandles();
-      const candleOneHourAgo = completedCandles.find((c) => c.timestamp >= oneHourAgo);
-      const priceOneHourAgo = candleOneHourAgo?.open ?? completedCandles[0]?.close ?? currentPrice;
-      const priceChange1h = ((currentPrice - priceOneHourAgo) / priceOneHourAgo) * 100;
+      const oldestCandle = completedCandles[0];
+      let priceChange1h = 0;
+      if (oldestCandle && oldestCandle.timestamp <= oneHourAgo) {
+        // Buffer spans at least 1 hour — find the candle closest to 1h ago
+        const candleOneHourAgo = completedCandles.find((c) => c.timestamp >= oneHourAgo);
+        const priceOneHourAgo = candleOneHourAgo?.open ?? oldestCandle.close;
+        priceChange1h = ((currentPrice - priceOneHourAgo) / priceOneHourAgo) * 100;
+      } else if (oldestCandle) {
+        // Buffer is shorter than 1 hour — use full buffer range but log it
+        const priceAtBufferStart = oldestCandle.open;
+        priceChange1h = ((currentPrice - priceAtBufferStart) / priceAtBufferStart) * 100;
+        await logger.warn("TRADE", `Volatility window incomplete: buffer spans ${Math.round((Date.now() - oldestCandle.timestamp) / 60_000)}m, not 60m`);
+      }
 
       const dailyRealizedLoss = Math.abs(Math.min(0, this.cachedDailyPnl));
+
+      // Daily loss warning at 80% of limit
+      const maxDailyLoss = portfolio.totalBalance * (user.riskProfile.maxDailyLossPct / 100);
+      if (dailyRealizedLoss > maxDailyLoss * 0.8) {
+        alertService.onDailyLossWarning(dailyRealizedLoss, maxDailyLoss);
+      }
 
       // [14] Position size — use availableBalance, not totalBalance
       const riskAmount = portfolio.availableBalance * (user.riskProfile.maxRiskPct / 100);
@@ -531,6 +665,7 @@ export class TradeEngine {
         decision,
         riskResult,
       });
+      alertService.onTradeExecuted(this.symbol, decision.decision, quantity, fillPrice);
 
       // [20] Emit
       this.callbacks.onTradeExecuted?.({

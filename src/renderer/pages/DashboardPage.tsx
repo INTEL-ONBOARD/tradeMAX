@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { SidebarRibbon } from "../components/Sidebar";
 import { AgentControlPanel } from "../components/AgentControlPanel";
 import { PositionsPanel } from "../components/PositionsPanel";
+import { PerformanceMetrics } from "../components/PerformanceMetrics";
 import { TradesPanel } from "../components/TradesPanel";
 import { AIDecisionFeed } from "../components/AIDecisionFeed";
 import { PortfolioPanel } from "../components/PortfolioPanel";
@@ -74,6 +75,9 @@ export function DashboardPage() {
               {/* Right column — Positions & other panels, scrolls internally */}
               <div className="flex-1 overflow-y-auto p-6">
                 <PositionsPanel />
+                <div className="mt-4">
+                  <PerformanceMetrics />
+                </div>
               </div>
             </motion.div>
           )}

@@ -18,4 +18,6 @@ const logSchema = new Schema<ILog>({
   timestamp: { type: Date, default: Date.now, index: true },
 });
 
+logSchema.index({ timestamp: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }); // 30 days
+
 export const LogModel = mongoose.model<ILog>("Log", logSchema);

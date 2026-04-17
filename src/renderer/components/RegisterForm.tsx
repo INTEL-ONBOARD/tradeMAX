@@ -170,7 +170,7 @@ export function RegisterForm({ onLoginClick, onSuccess }: RegisterFormProps) {
             isDirty={dirtyFields.password}
             autoComplete="new-password"
           />
-          {dirtyFields.password && <PasswordStrengthBar password={password} />}
+          {dirtyFields.password && !errors.password && <PasswordStrengthBar password={password} />}
         </motion.div>
 
         {/* Submit */}

@@ -6,13 +6,14 @@ export interface UserSession {
 }
 
 export interface UserSettings {
-  selectedExchange: "binance" | "bybit";
+  selectedExchange: "bybit" | "paper";
   tradingMode: "spot" | "futures";
   riskProfile: RiskProfile;
   engineConfig: EngineConfig;
   agentModeEnabled: boolean;
   themePreference: "dark" | "light";
   hasClaudeKey: boolean;
+  hasBybitKeys: boolean;
 }
 
 export interface RiskProfile {
@@ -39,6 +40,15 @@ export interface EngineConfig {
   wsReconnectRetries: number;
   enableEMA: boolean;
   enableBollingerBands: boolean;
+  enableADX: boolean;
+  enableATR: boolean;
+  enableStochastic: boolean;
+  enableTrailingStop: boolean;
+  trailingStopPct: number;
+  paperStartingBalance: number;
+  watchlist: string[];
+  enableMultiModelVoting: boolean;
+  votingModels: string[];
 }
 
 // ─── Portfolio ─────────────────────────────────────────
@@ -82,7 +92,7 @@ export interface Trade {
   pnl: number | null;
   status: "OPEN" | "CLOSED";
   source: "AI" | "MANUAL" | "SYSTEM";
-  exchange: "binance" | "bybit";
+  exchange: "bybit" | "paper";
   mode: "spot" | "futures";
   aiDecision: AIDecision | null;
   riskCheck: RiskResult | null;
@@ -102,7 +112,7 @@ export interface AIDecision {
 
 export interface AIPromptData {
   symbol: string;
-  exchange: "binance" | "bybit";
+  exchange: "bybit";
   mode: "spot" | "futures";
   currentPrice: number;
   indicators: {
@@ -110,9 +120,13 @@ export interface AIPromptData {
     macd: { line: number; signal: number; histogram: number };
     ema?: { ema12: number; ema26: number };
     bollingerBands?: { upper: number; middle: number; lower: number };
+    adx?: number;
+    atr?: number;
+    stochastic?: { k: number; d: number };
   };
   recentCandles: CandleBar[];
   recentTradeOutcomes: Array<{ side: string; pnl: number; reason: string }>;
+  marketRegime?: "trending_up" | "trending_down" | "ranging" | "volatile";
   spread: number;
   portfolio: PortfolioSnapshot;
   openPositions: Position[];

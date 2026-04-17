@@ -1,12 +1,11 @@
 import { createExchangeService } from "../services/exchangeFactory.js";
-import type { BinanceService } from "../services/binanceService.js";
 import type { BybitService } from "../services/bybitService.js";
 import { decrypt } from "../services/encryptionService.js";
 import { getUserDoc } from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
 import type { PortfolioSnapshot, Position, MarketTick } from "../shared/types.js";
 
-type RealExchange = BinanceService | BybitService;
+type RealExchange = BybitService;
 
 type AccountCallbacks = {
   onPortfolio: (snap: PortfolioSnapshot) => void;
@@ -24,16 +23,18 @@ class AccountWatcher {
   }
 
   async start(userId: string): Promise<void> {
+    console.log("[ACCOUNT_WATCHER] start() called, running:", this.running, "hasCallbacks:", !!this.callbacks);
     if (this.running) return;
     if (!this.callbacks) return;
 
     try {
       const user = await getUserDoc(userId);
+      console.log("[ACCOUNT_WATCHER] selectedExchange:", user.selectedExchange);
 
       if (user.selectedExchange === "paper") return;
 
       const keys = user.exchangeKeys[user.selectedExchange];
-      if (!keys.apiKey || !keys.apiSecret) return;
+      if (!keys.apiKey || !keys.apiSecret) { console.log("[ACCOUNT_WATCHER] No keys found, aborting"); return; }
 
       const userSalt = user.encryptionSalt || undefined;
       const decryptedKey = decrypt(keys.apiKey, userSalt);

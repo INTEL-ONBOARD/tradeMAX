@@ -8,12 +8,16 @@ const ALLOWED_INVOKE_CHANNELS = [
   "ai:last-decision",
   "agent:start", "agent:stop", "agent:kill-switch", "agent:reset-freeze",
   "logs:recent",
-  "exchange:pairs"
+  "exchange:pairs",
+  "backtest:run"
 ];
 
 const ALLOWED_STREAM_CHANNELS = [
   "stream:market-tick", "stream:portfolio", "stream:positions",
-  "stream:trade-executed", "stream:ai-decision", "stream:agent-status", "stream:log"
+  "stream:trade-executed", "stream:ai-decision", "stream:agent-status", "stream:log",
+  "session:restored",
+  "stream:notification",
+  "stream:backtest-progress"
 ];
 
 contextBridge.exposeInMainWorld("api", {

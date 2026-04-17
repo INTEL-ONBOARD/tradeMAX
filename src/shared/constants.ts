@@ -24,6 +24,8 @@ export const IPC = {
   LOGS_RECENT: "logs:recent",
 
   EXCHANGE_PAIRS: "exchange:pairs",
+
+  BACKTEST_RUN: "backtest:run",
 } as const;
 
 // ─── IPC Stream Events ─────────────────────────────────
@@ -35,6 +37,8 @@ export const STREAM = {
   AI_DECISION: "stream:ai-decision",
   AGENT_STATUS: "stream:agent-status",
   LOG: "stream:log",
+  NOTIFICATION: "stream:notification",
+  BACKTEST_PROGRESS: "stream:backtest-progress",
 } as const;
 
 // ─── Risk Defaults ─────────────────────────────────────
@@ -76,6 +80,15 @@ export const ENGINE_DEFAULTS = {
   wsReconnectRetries: 5,
   enableEMA: true,
   enableBollingerBands: true,
+  enableADX: true,
+  enableATR: true,
+  enableStochastic: true,
+  enableTrailingStop: false,
+  trailingStopPct: 1.0,
+  paperStartingBalance: 10000,
+  watchlist: [] as readonly string[],
+  enableMultiModelVoting: false,
+  votingModels: ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"] as readonly string[],
 } as const;
 
 // ─── Allowed IPC Channels (for preload whitelist) ──────

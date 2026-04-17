@@ -51,7 +51,7 @@ export default function App() {
       store.setTheme(theme);
       store.setScreen("dashboard");
 
-      if (data.settings.hasBinanceKeys || data.settings.hasBybitKeys) {
+      if (data.settings.hasBybitKeys) {
         api.invoke(IPC.PORTFOLIO_GET).then((p: any) => {
           if (p) store.setPortfolio(p as PortfolioSnapshot);
         }).catch(() => {});

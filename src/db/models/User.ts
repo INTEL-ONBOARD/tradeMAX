@@ -6,11 +6,10 @@ export interface IUser extends Document {
   password: string;
   encryptionSalt: string;
   exchangeKeys: {
-    binance: { apiKey: string; apiSecret: string };
     bybit: { apiKey: string; apiSecret: string };
   };
   claudeApiKey: string;
-  selectedExchange: "binance" | "bybit" | "paper";
+  selectedExchange: "bybit" | "paper";
   tradingMode: "spot" | "futures";
   riskProfile: {
     maxRiskPct: number;
@@ -58,17 +57,13 @@ const userSchema = new Schema<IUser>(
     password: { type: String, required: true },
     encryptionSalt: { type: String, default: "" },
     exchangeKeys: {
-      binance: {
-        apiKey: { type: String, default: "" },
-        apiSecret: { type: String, default: "" },
-      },
       bybit: {
         apiKey: { type: String, default: "" },
         apiSecret: { type: String, default: "" },
       },
     },
     claudeApiKey: { type: String, default: "" },
-    selectedExchange: { type: String, enum: ["binance", "bybit", "paper"], default: "bybit" },
+    selectedExchange: { type: String, enum: ["bybit", "paper"], default: "bybit" },
     tradingMode: { type: String, enum: ["spot", "futures"], default: "spot" },
     riskProfile: {
       maxRiskPct: { type: Number, default: 2 },
