@@ -156,15 +156,6 @@ export function TradesPanel() {
       ) : (
         <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
           <table className="w-full text-xs">
-            <thead className="sticky top-0 z-10" style={{ background: "var(--bg-surface)" }}>
-              <tr className="border-b border-[var(--border)]">
-                {["Symbol", "Side", "Source", "PnL", "Status", "Time"].map((h) => (
-                  <th key={h} className={`pb-2.5 text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider ${["PnL", "Time"].includes(h) ? "text-right" : "text-left"}`}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
             <tbody>
               {filteredTrades.map((t, i) => {
                 const pnl = t.pnl ?? 0;
