@@ -16,6 +16,7 @@ export const IPC = {
   EXCHANGE_CLOSED_PNL: "exchange:closed-pnl",
 
   AI_LAST_DECISION: "ai:last-decision",
+  AI_LIST_MODELS: "ai:list-models",
 
   AGENT_START: "agent:start",
   AGENT_STOP: "agent:stop",
