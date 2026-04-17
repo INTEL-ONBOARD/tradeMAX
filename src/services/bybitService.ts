@@ -37,9 +37,33 @@ export class BybitService {
     const account = result.list?.[0];
     if (!account) return { totalBalance: 0, availableBalance: 0, dailyPnl: 0, weeklyPnl: 0 };
 
+    // Bybit UNIFIED accounts often return empty strings for totalAvailableBalance
+    // and per-coin availableToWithdraw. Calculate from USDT: equity - totalPositionIM
+    let available = parseFloat(account.totalAvailableBalance || "0") || 0;
+    if (available === 0) {
+      const coins = (account as any).coin as Array<{
+        coin: string;
+        equity: string;
+        totalPositionIM: string;
+        availableToWithdraw: string;
+      }>| undefined;
+      const usdt = coins?.find((c) => c.coin === "USDT");
+      if (usdt) {
+        const withdraw = parseFloat(usdt.availableToWithdraw || "0") || 0;
+        if (withdraw > 0) {
+          available = withdraw;
+        } else {
+          // Calculate: equity - margin used by positions
+          const equity = parseFloat(usdt.equity || "0") || 0;
+          const positionIM = parseFloat(usdt.totalPositionIM || "0") || 0;
+          available = Math.max(0, equity - positionIM);
+        }
+      }
+    }
+
     return {
       totalBalance: parseFloat(account.totalEquity || "0") || 0,
-      availableBalance: parseFloat(account.totalAvailableBalance || "0") || 0,
+      availableBalance: available,
       dailyPnl: 0,
       weeklyPnl: 0,
     };
