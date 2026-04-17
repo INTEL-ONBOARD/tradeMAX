@@ -305,15 +305,15 @@ export function PortfolioModalContent() {
         </div>
       </div>
 
-      {/* Equity Curve + Performance — side by side */}
+      {/* Equity Curve + Performance — side by side, filtered by time */}
       <div className="grid grid-cols-2 gap-4 px-5 pt-3 pb-1">
         <div>
           <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium mb-2">Equity Curve</p>
-          <EquityCurveChart />
+          <EquityCurveChart filter={activeFilter} />
         </div>
         <div>
           <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium mb-2">Performance</p>
-          <PerformanceMetrics />
+          <PerformanceMetrics filter={activeFilter} />
         </div>
       </div>
 

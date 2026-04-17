@@ -13,6 +13,7 @@ export const IPC = {
   PORTFOLIO_GET: "portfolio:get",
   POSITIONS_GET: "positions:get",
   TRADES_HISTORY: "trades:history",
+  EXCHANGE_CLOSED_PNL: "exchange:closed-pnl",
 
   AI_LAST_DECISION: "ai:last-decision",
 

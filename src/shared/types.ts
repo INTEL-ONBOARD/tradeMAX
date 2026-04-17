@@ -100,6 +100,16 @@ export interface Trade {
   closedAt: string | null;
 }
 
+export interface ClosedPnlRecord {
+  symbol: string;
+  side: "BUY" | "SELL";
+  quantity: number;
+  entryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  closedAt: string;
+}
+
 // ─── AI ────────────────────────────────────────────────
 export interface AIDecision {
   decision: "BUY" | "SELL" | "HOLD";

@@ -67,6 +67,33 @@ export class BybitService {
       }));
   }
 
+  /** Fetch closed PnL history from Bybit for equity curve and performance metrics. */
+  async getClosedPnl(limit = 100): Promise<Array<{
+    symbol: string;
+    side: "BUY" | "SELL";
+    quantity: number;
+    entryPrice: number;
+    exitPrice: number;
+    pnl: number;
+    closedAt: string;
+  }>> {
+    if (!this.rest) throw new Error("Bybit not initialized");
+
+    const category = this.getCategory();
+    if (category === "spot") return [];
+
+    const { result } = await this.rest.getClosedPnL({ category, limit });
+    return (result.list ?? []).map((p: any) => ({
+      symbol: p.symbol,
+      side: p.side === "Buy" ? ("BUY" as const) : ("SELL" as const),
+      quantity: parseFloat(p.qty || "0") || 0,
+      entryPrice: parseFloat(p.avgEntryPrice || "0") || 0,
+      exitPrice: parseFloat(p.avgExitPrice || "0") || 0,
+      pnl: parseFloat(p.closedPnl || "0") || 0,
+      closedAt: new Date(parseInt(p.updatedTime || "0")).toISOString(),
+    }));
+  }
+
   async placeMarketOrder(symbol: string, side: "BUY" | "SELL", quantity: number): Promise<OrderResult> {
     if (!this.rest) throw new Error("Bybit not initialized");
 

@@ -6,6 +6,7 @@ import { AuthPage } from "./pages/AuthPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { IPC, STREAM } from "../shared/constants";
 import type {
+  ClosedPnlRecord,
   PortfolioSnapshot,
   Position,
   Trade,
@@ -72,6 +73,9 @@ export default function App() {
     }).catch(() => {});
     api.invoke(IPC.LOGS_RECENT, { limit: 100 }).then((data: any) => {
       if (data) store.setLogs(data as LogEntry[]);
+    }).catch(() => {});
+    api.invoke(IPC.EXCHANGE_CLOSED_PNL).then((data: any) => {
+      if (data) store.setExchangeHistory(data as ClosedPnlRecord[]);
     }).catch(() => {});
   }, [currentScreen]);
 

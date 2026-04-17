@@ -231,6 +231,33 @@ export function registerIpcHandlers(): void {
     }
   });
 
+  // ─── Exchange Closed PnL ─────────────────────────────
+  ipcMain.handle(IPC.EXCHANGE_CLOSED_PNL, async () => {
+    if (!currentUserId) throw new Error("Not authenticated");
+
+    const user = await auth.getUserDoc(currentUserId);
+    if (user.selectedExchange === "paper") return [];
+
+    const keys = user.exchangeKeys.bybit;
+    if (!keys.apiKey || !keys.apiSecret) return [];
+
+    const userSalt = user.encryptionSalt || undefined;
+    const exchange = createExchangeService(user.selectedExchange);
+
+    try {
+      await exchange.initialize(
+        { apiKey: decrypt(keys.apiKey, userSalt), apiSecret: decrypt(keys.apiSecret, userSalt) },
+        user.tradingMode,
+      );
+      return await (exchange as any).getClosedPnl(200);
+    } catch (err) {
+      await logger.warn("SYSTEM", `Closed PnL fetch failed: ${err}`);
+      return [];
+    } finally {
+      exchange.destroy();
+    }
+  });
+
   // ─── Trades ──────────────────────────────────────────
   ipcMain.handle(IPC.TRADES_HISTORY, async (_e, data) => {
     if (!currentUserId) throw new Error("Not authenticated");

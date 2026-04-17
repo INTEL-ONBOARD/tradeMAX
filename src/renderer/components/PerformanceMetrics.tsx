@@ -9,40 +9,60 @@ function StatCard({ label, value, color }: { label: string; value: string; color
   );
 }
 
-export function PerformanceMetrics() {
-  const trades = useAppStore((s) => s.trades);
-  const closedTrades = trades.filter((t) => t.status === "CLOSED" && t.pnl !== null);
+interface PerformanceMetricsProps {
+  filter?: string;
+}
+
+export function PerformanceMetrics({ filter = "ALL" }: PerformanceMetricsProps) {
+  const exchangeHistory = useAppStore((s) => s.exchangeHistory);
+
+  // Filter by time range
+  const now = Date.now();
+  const filterMs: Record<string, number> = {
+    "1H": 3600_000,
+    "4H": 4 * 3600_000,
+    "1D": 86400_000,
+    "1W": 7 * 86400_000,
+    "1M": 30 * 86400_000,
+  };
+  const cutoff = filterMs[filter] ? now - filterMs[filter] : 0;
+
+  const closedTrades = exchangeHistory.filter(
+    (t) => new Date(t.closedAt).getTime() >= cutoff
+  );
 
   if (closedTrades.length === 0) {
     return (
-      <div className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg p-4 text-center">
-        <p className="text-xs text-[var(--text-tertiary)]">No closed trades yet</p>
+      <div className="w-full h-[200px] flex items-center justify-center bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg">
+        <p className="text-xs text-[var(--text-tertiary)]">
+          {exchangeHistory.length === 0 ? "No closed trades yet" : `No trades in ${filter} window`}
+        </p>
       </div>
     );
   }
 
-  const wins = closedTrades.filter((t) => (t.pnl ?? 0) > 0);
-  const losses = closedTrades.filter((t) => (t.pnl ?? 0) < 0);
+  const wins = closedTrades.filter((t) => t.pnl > 0);
+  const losses = closedTrades.filter((t) => t.pnl < 0);
   const winRate = (wins.length / closedTrades.length) * 100;
-  const totalPnl = closedTrades.reduce((s, t) => s + (t.pnl ?? 0), 0);
+  const totalPnl = closedTrades.reduce((s, t) => s + t.pnl, 0);
   const avgPnl = totalPnl / closedTrades.length;
-  const bestTrade = Math.max(...closedTrades.map((t) => t.pnl ?? 0));
-  const worstTrade = Math.min(...closedTrades.map((t) => t.pnl ?? 0));
-  const grossProfit = wins.reduce((s, t) => s + (t.pnl ?? 0), 0);
-  const grossLoss = Math.abs(losses.reduce((s, t) => s + (t.pnl ?? 0), 0));
+  const bestTrade = Math.max(...closedTrades.map((t) => t.pnl));
+  const worstTrade = Math.min(...closedTrades.map((t) => t.pnl));
+  const grossProfit = wins.reduce((s, t) => s + t.pnl, 0);
+  const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0;
 
   let peak = 0;
   let maxDD = 0;
   let cumPnl = 0;
   for (const t of closedTrades) {
-    cumPnl += t.pnl ?? 0;
+    cumPnl += t.pnl;
     if (cumPnl > peak) peak = cumPnl;
     const dd = peak - cumPnl;
     if (dd > maxDD) maxDD = dd;
   }
 
-  const returns = closedTrades.map((t) => t.pnl ?? 0);
+  const returns = closedTrades.map((t) => t.pnl);
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
   const variance = returns.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / returns.length;
   const stdDev = Math.sqrt(variance);

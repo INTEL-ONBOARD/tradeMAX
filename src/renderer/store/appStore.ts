@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type {
+  ClosedPnlRecord,
   UserSession,
   UserSettings,
   PortfolioSnapshot,
@@ -24,6 +25,7 @@ interface AppState {
   portfolio: PortfolioSnapshot | null;
   positions: Position[];
   trades: Trade[];
+  exchangeHistory: ClosedPnlRecord[];
   lastAIDecision: AIDecision | null;
   agentStatus: AgentStatus;
   logs: LogEntry[];
@@ -41,6 +43,7 @@ interface AppState {
   setPositions: (p: Position[]) => void;
   addTrade: (t: Trade) => void;
   setTrades: (t: Trade[]) => void;
+  setExchangeHistory: (h: ClosedPnlRecord[]) => void;
   setLastAIDecision: (d: AIDecision) => void;
   setAgentStatus: (s: AgentStatus) => void;
   addLog: (l: LogEntry) => void;
@@ -69,6 +72,7 @@ export const useAppStore = create<AppState>((set) => ({
   portfolio: null,
   positions: [],
   trades: [],
+  exchangeHistory: [],
   lastAIDecision: null,
   agentStatus: { running: false, frozen: false },
   logs: [],
@@ -98,6 +102,7 @@ export const useAppStore = create<AppState>((set) => ({
   setPositions: (positions) => set({ positions }),
   addTrade: (t) => set((s) => ({ trades: [t, ...s.trades].slice(0, 50) })),
   setTrades: (trades) => set({ trades }),
+  setExchangeHistory: (exchangeHistory) => set({ exchangeHistory }),
   setLastAIDecision: (d) => set({ lastAIDecision: d }),
   setAgentStatus: (s) => set({ agentStatus: s }),
   addLog: (l) => set((s) => ({ logs: [l, ...s.logs].slice(0, MAX_LOGS) })),
@@ -126,6 +131,7 @@ export const useAppStore = create<AppState>((set) => ({
       portfolio: null,
       positions: [],
       trades: [],
+      exchangeHistory: [],
       lastAIDecision: null,
       agentStatus: { running: false, frozen: false },
       logs: [],

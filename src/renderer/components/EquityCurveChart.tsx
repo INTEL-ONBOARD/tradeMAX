@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useAppStore } from "../store/appStore";
 import { motion, AnimatePresence } from "framer-motion";
+import type { ClosedPnlRecord } from "../../shared/types";
 
 function catmullRomPath(points: { x: number; y: number }[]): string {
   if (points.length < 2) return "";
@@ -20,32 +21,51 @@ function catmullRomPath(points: { x: number; y: number }[]): string {
   return d;
 }
 
-export function EquityCurveChart() {
-  const trades = useAppStore((s) => s.trades);
+interface EquityCurveChartProps {
+  filter?: string;
+}
+
+export function EquityCurveChart({ filter = "ALL" }: EquityCurveChartProps) {
+  const exchangeHistory = useAppStore((s) => s.exchangeHistory);
   const portfolio = useAppStore((s) => s.portfolio);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const closedTrades = trades
-    .filter((t) => t.status === "CLOSED" && t.pnl !== null)
-    .sort((a, b) => new Date(a.closedAt ?? 0).getTime() - new Date(b.closedAt ?? 0).getTime());
+  // Filter by time range
+  const now = Date.now();
+  const filterMs: Record<string, number> = {
+    "1H": 3600_000,
+    "4H": 4 * 3600_000,
+    "1D": 86400_000,
+    "1W": 7 * 86400_000,
+    "1M": 30 * 86400_000,
+  };
+  const cutoff = filterMs[filter] ? now - filterMs[filter] : 0;
 
-  if (closedTrades.length < 2) {
+  const filtered = exchangeHistory
+    .filter((t) => new Date(t.closedAt).getTime() >= cutoff)
+    .sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
+
+  if (filtered.length < 2) {
     return (
       <div className="w-full h-[200px] flex items-center justify-center bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg">
-        <p className="text-xs text-[var(--text-tertiary)]">Need at least 2 closed trades to show equity curve</p>
+        <p className="text-xs text-[var(--text-tertiary)]">
+          {exchangeHistory.length === 0
+            ? "No closed trades on exchange"
+            : `No trades in ${filter} window (${exchangeHistory.length} total)`}
+        </p>
       </div>
     );
   }
 
-  const totalPnl = closedTrades.reduce((s, t) => s + (t.pnl ?? 0), 0);
+  const totalPnl = filtered.reduce((s, t) => s + t.pnl, 0);
   const currentBalance = portfolio?.totalBalance ?? 0;
   const startBalance = currentBalance - totalPnl || 10000;
 
   const equityPoints = [startBalance];
   let cumPnl = 0;
-  for (const t of closedTrades) {
-    cumPnl += t.pnl ?? 0;
+  for (const t of filtered) {
+    cumPnl += t.pnl;
     equityPoints.push(startBalance + cumPnl);
   }
 
