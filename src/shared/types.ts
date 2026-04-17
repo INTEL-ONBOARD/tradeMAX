@@ -218,6 +218,33 @@ export interface AppNotification {
   timestamp: string;
 }
 
+// ─── Backtest ─────────────────────────────────────────
+export interface BacktestTrade {
+  side: "BUY" | "SELL";
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  pnl: number;
+  reason: "STOP_LOSS" | "TAKE_PROFIT";
+  entryTime: string;
+  exitTime: string;
+  aiConfidence: number;
+}
+
+export interface BacktestResult {
+  symbol: string;
+  period: string;
+  startingBalance: number;
+  finalBalance: number;
+  totalTrades: number;
+  winRate: number;
+  totalPnl: number;
+  maxDrawdown: number;
+  sharpeRatio: number;
+  profitFactor: number;
+  trades: BacktestTrade[];
+}
+
 // ─── Logs ──────────────────────────────────────────────
 export type LogLevel = "INFO" | "WARN" | "ERROR";
 export type LogCategory = "AUTH" | "TRADE" | "AI" | "RISK" | "SAFETY" | "SYSTEM";

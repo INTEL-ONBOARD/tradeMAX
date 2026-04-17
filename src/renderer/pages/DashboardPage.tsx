@@ -9,8 +9,10 @@ import { AIDecisionFeed } from "../components/AIDecisionFeed";
 import { PortfolioPanel } from "../components/PortfolioPanel";
 import { PortfolioModalContent } from "../components/PortfolioModalContent";
 import { LiveLogPanel } from "../components/LiveLogPanel";
+import { BacktestResultsModal } from "../components/BacktestResultsModal";
 import { Modal } from "../components/Modal";
 import { Activity, LayoutGrid, Terminal, Wallet } from "../components/icons";
+import type { BacktestResult } from "../../shared/types";
 
 type ToolPanel = "portfolio" | "ai-signal" | "market-scan" | "terminal" | null;
 
@@ -45,6 +47,8 @@ const panelConfig: Record<string, { title: string; width: string; height: string
 export function DashboardPage() {
   const [activeView, setActiveView] = useState("agent");
   const [openPanel, setOpenPanel] = useState<ToolPanel>(null);
+  const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
+  const [backtestOpen, setBacktestOpen] = useState(false);
 
   const cfg = openPanel ? panelConfig[openPanel] : null;
 
@@ -139,6 +143,13 @@ export function DashboardPage() {
           )}
         </Modal>
       )}
+
+      {/* Backtest results modal — trigger will be wired when backtest UI is added */}
+      <BacktestResultsModal
+        isOpen={backtestOpen}
+        onClose={() => setBacktestOpen(false)}
+        result={backtestResult}
+      />
     </div>
   );
 }
