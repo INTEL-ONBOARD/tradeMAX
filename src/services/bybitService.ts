@@ -335,7 +335,16 @@ export class BybitService {
     });
 
     this.accountWsClient.on("exception", (err: { message?: string }) => {
-      logger.error("SYSTEM", `Bybit account stream error: ${err?.message ?? String(err)}`);
+      // Log but do NOT call closeAll() — let the bybit-api library handle reconnection
+      logger.warn("SYSTEM", `Bybit account stream exception (library will auto-reconnect): ${err?.message ?? String(err)}`);
+    });
+
+    this.accountWsClient.on("reconnected", () => {
+      logger.info("SYSTEM", "Bybit account stream reconnected successfully");
+    });
+
+    this.accountWsClient.on("close", () => {
+      logger.warn("SYSTEM", "Bybit account stream closed — library will attempt auto-reconnect");
     });
   }
 
