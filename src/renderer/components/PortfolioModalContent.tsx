@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useRef } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useAppStore } from "../store/appStore";
 import { TrendingUp, TrendingDown } from "./icons";
 import { EquityCurveChart } from "./EquityCurveChart";
@@ -7,13 +7,12 @@ import { PerformanceMetrics } from "./PerformanceMetrics";
 
 const TIME_FILTERS = ["1H", "4H", "1D", "1W", "1M", "ALL"] as const;
 
-const generateInitialData = (count: number, currentBalance: number) => {
-  const data: number[] = [];
-  // Initialize with current balance for all points
-  for (let i = 0; i < count; i++) {
-    data.push(currentBalance);
-  }
-  return data;
+const FILTER_MS: Record<string, number> = {
+  "1H": 3600_000,
+  "4H": 4 * 3600_000,
+  "1D": 86400_000,
+  "1W": 7 * 86400_000,
+  "1M": 30 * 86400_000,
 };
 
 function catmullRomPath(points: { x: number; y: number }[]): string {
@@ -46,36 +45,37 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
 
 export function PortfolioModalContent() {
   const portfolio = useAppStore((s) => s.portfolio);
-  const trades = useAppStore((s) => s.trades);
+  const exchangeHistory = useAppStore((s) => s.exchangeHistory);
   const positions = useAppStore((s) => s.positions);
 
   const dailyPnl = portfolio?.dailyPnl ?? 0;
   const isProfitable = dailyPnl >= 0;
   const totalBalance = portfolio?.totalBalance ?? 0;
 
-  const [activeFilter, setActiveFilter] = useState<typeof TIME_FILTERS[number]>("1D");
-  const [chartData, setChartData] = useState<number[]>(generateInitialData(60, totalBalance));
+  const [activeFilter, setActiveFilter] = useState<typeof TIME_FILTERS[number]>("ALL");
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  // Regenerate data when filter changes
-  useEffect(() => {
-    const counts: Record<string, number> = { "1H": 30, "4H": 48, "1D": 60, "1W": 70, "1M": 90, ALL: 120 };
-    setChartData(generateInitialData(counts[activeFilter] ?? 60, totalBalance));
-  }, [activeFilter]);
+  // Build chart data from exchange history, filtered by time
+  const chartData = useMemo(() => {
+    const cutoff = FILTER_MS[activeFilter] ? Date.now() - FILTER_MS[activeFilter] : 0;
+    const filtered = exchangeHistory
+      .filter((t) => new Date(t.closedAt).getTime() >= cutoff)
+      .sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
 
-  // Update chart with real portfolio balance changes
-  useEffect(() => {
-    setChartData((prev) => {
-      // If the latest value is different from current balance, add new data point
-      const lastVal = prev[prev.length - 1];
-      if (Math.abs(lastVal - totalBalance) > 0.01) {
-        return [...prev.slice(1), totalBalance];
-      }
-      return prev;
-    });
-  }, [totalBalance]);
+    if (filtered.length === 0) return [totalBalance, totalBalance];
+
+    const filteredPnl = filtered.reduce((s, t) => s + t.pnl, 0);
+    const startBalance = totalBalance - filteredPnl || totalBalance;
+    const curve = [startBalance];
+    let cum = 0;
+    for (const t of filtered) {
+      cum += t.pnl;
+      curve.push(startBalance + cum);
+    }
+    return curve;
+  }, [exchangeHistory, activeFilter, totalBalance]);
 
   // Chart geometry
   const W = 700;
@@ -108,23 +108,13 @@ export function PortfolioModalContent() {
   const hoveredPt = hoveredIdx !== null ? points[hoveredIdx] : null;
   const hoveredVal = hoveredIdx !== null ? chartData[hoveredIdx] : null;
 
-  // Convert viewBox coordinates to pixel position relative to the container
-  const toPixel = (vx: number, vy: number) => {
-    const el = chartContainerRef.current;
-    if (!el) return { px: 0, py: 0 };
-    const rect = el.getBoundingClientRect();
-    return {
-      px: (vx / W) * rect.width,
-      py: (vy / H) * rect.height,
-    };
-  };
-
-  // Computed stats
+  // Computed stats from exchange history
   const availableBalance = portfolio?.availableBalance ?? 0;
-  const winCount = trades.filter((t) => (t.pnl ?? 0) > 0).length;
-  const totalClosed = trades.filter((t) => t.status === "CLOSED").length;
+  const closedTrades = exchangeHistory;
+  const winCount = closedTrades.filter((t) => t.pnl > 0).length;
+  const totalClosed = closedTrades.length;
   const winRate = totalClosed > 0 ? ((winCount / totalClosed) * 100).toFixed(1) : "—";
-  const totalPnl = trades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
+  const totalPnl = closedTrades.reduce((sum, t) => sum + t.pnl, 0);
   const chartMin = min.toLocaleString(undefined, { maximumFractionDigits: 2 });
   const chartMax = max.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
