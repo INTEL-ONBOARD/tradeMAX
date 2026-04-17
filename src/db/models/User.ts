@@ -10,7 +10,7 @@ export interface IUser extends Document {
     bybit: { apiKey: string; apiSecret: string };
   };
   claudeApiKey: string;
-  selectedExchange: "binance" | "bybit";
+  selectedExchange: "binance" | "bybit" | "paper";
   tradingMode: "spot" | "futures";
   riskProfile: {
     maxRiskPct: number;
@@ -35,6 +35,15 @@ export interface IUser extends Document {
     wsReconnectRetries: number;
     enableEMA: boolean;
     enableBollingerBands: boolean;
+    enableADX: boolean;
+    enableATR: boolean;
+    enableStochastic: boolean;
+    enableTrailingStop: boolean;
+    trailingStopPct: number;
+    paperStartingBalance: number;
+    watchlist: string[];
+    enableMultiModelVoting: boolean;
+    votingModels: string[];
   };
   agentModeEnabled: boolean;
   themePreference: "dark" | "light";
@@ -59,7 +68,7 @@ const userSchema = new Schema<IUser>(
       },
     },
     claudeApiKey: { type: String, default: "" },
-    selectedExchange: { type: String, enum: ["binance", "bybit"], default: "binance" },
+    selectedExchange: { type: String, enum: ["binance", "bybit", "paper"], default: "bybit" },
     tradingMode: { type: String, enum: ["spot", "futures"], default: "spot" },
     riskProfile: {
       maxRiskPct: { type: Number, default: 2 },
@@ -84,9 +93,18 @@ const userSchema = new Schema<IUser>(
       wsReconnectRetries: { type: Number, default: 5 },
       enableEMA: { type: Boolean, default: true },
       enableBollingerBands: { type: Boolean, default: true },
+      enableADX: { type: Boolean, default: true },
+      enableATR: { type: Boolean, default: true },
+      enableStochastic: { type: Boolean, default: true },
+      enableTrailingStop: { type: Boolean, default: false },
+      trailingStopPct: { type: Number, default: 1.0 },
+      paperStartingBalance: { type: Number, default: 10000 },
+      watchlist: { type: [String], default: [] },
+      enableMultiModelVoting: { type: Boolean, default: false },
+      votingModels: { type: [String], default: ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"] },
     },
     agentModeEnabled: { type: Boolean, default: false },
-    themePreference: { type: String, enum: ["dark", "light"], default: "dark" },
+    themePreference: { type: String, enum: ["dark", "light"], default: "light" },
   },
   { timestamps: true }
 );

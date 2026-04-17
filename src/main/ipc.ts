@@ -89,6 +89,12 @@ export function registerIpcHandlers(): void {
 
     setCurrentUserId(result.session.userId);
 
+    // Auto-fix: if user has Bybit keys but selectedExchange is wrong, correct it
+    if (result.settings.hasBybitKeys && result.settings.selectedExchange !== "bybit") {
+      const fixed = await auth.updateSettings(result.session.userId, { selectedExchange: "bybit" });
+      result.settings = fixed;
+    }
+
     // Start real-time streaming if exchange keys are configured
     if (result.settings.hasBinanceKeys || result.settings.hasBybitKeys) {
       accountWatcher.start(result.session.userId).catch(() => {});
