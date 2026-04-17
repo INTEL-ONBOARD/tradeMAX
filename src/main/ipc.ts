@@ -10,7 +10,7 @@ import { TradeModel } from "../db/models/Trade.js";
 import { LogModel } from "../db/models/Log.js";
 import { saveSession, clearSession } from "./sessionManager.js";
 import { createExchangeService } from "../services/exchangeFactory.js";
-import { decrypt } from "../services/encryptionService.js";
+import { decrypt, clearKeyCache } from "../services/encryptionService.js";
 import { mapExchangeError } from "./exchangeErrors.js";
 import { accountWatcher } from "./accountWatcher.js";
 import { runBacktest } from "../services/backtestService.js";
@@ -74,6 +74,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.AUTH_LOGOUT, async () => {
     if (tradeEngine.isRunning()) await tradeEngine.stop();
     await accountWatcher.stop();
+    clearKeyCache();
     setCurrentUserId(null);
     clearSession();
     await logger.info("AUTH", "User logged out");

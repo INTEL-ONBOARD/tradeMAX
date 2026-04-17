@@ -50,6 +50,10 @@ export function decrypt(encryptedString: string, userSalt?: string): string {
   return decrypted;
 }
 
+export function clearKeyCache(): void {
+  keyCache.clear();
+}
+
 export function generateUserSalt(): string {
   return crypto.randomBytes(32).toString("hex");
 }
