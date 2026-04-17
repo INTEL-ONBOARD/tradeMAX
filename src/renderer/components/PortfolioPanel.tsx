@@ -24,8 +24,26 @@ function catmullRomPath(points: { x: number; y: number }[]): string {
 export function PortfolioPanel() {
   const portfolio = useAppStore((s) => s.portfolio);
   const exchangeHistory = useAppStore((s) => s.exchangeHistory);
-  const totalBalance = portfolio?.totalBalance ?? 0;
-  const dailyPnl = portfolio?.dailyPnl ?? 0;
+
+  // Loading state — portfolio not yet fetched
+  if (!portfolio) {
+    return (
+      <div className="relative overflow-hidden flex flex-col h-full animate-pulse">
+        <div className="flex items-center gap-2.5 mb-3 px-1">
+          <div className="w-7 h-7 rounded-lg bg-[var(--bg-overlay)]" />
+          <div className="h-3 w-16 rounded bg-[var(--bg-overlay)]" />
+        </div>
+        <div className="px-1 mb-1">
+          <div className="h-2 w-20 rounded bg-[var(--bg-overlay)] mb-2" />
+          <div className="h-7 w-32 rounded bg-[var(--bg-overlay)]" />
+        </div>
+        <div className="flex-1 mt-4 rounded bg-[var(--bg-overlay)]" />
+      </div>
+    );
+  }
+
+  const totalBalance = portfolio.totalBalance;
+  const dailyPnl = portfolio.dailyPnl;
   const isProfitable = dailyPnl >= 0;
 
   // Build equity curve from exchange history + live balance
