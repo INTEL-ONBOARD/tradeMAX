@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { aiDecisionSchema } from "../shared/validators.js";
 import { logger } from "./loggerService.js";
 import { ENGINE, ENGINE_DEFAULTS } from "../shared/constants.js";
@@ -31,6 +31,39 @@ If a marketRegime field is present, adapt your strategy:
 
 No markdown, no code blocks, no extra text. Only the raw JSON object.`;
 
+const AI_DECISION_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    decision: {
+      type: "string",
+      enum: ["BUY", "SELL", "HOLD"],
+    },
+    confidence: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+    },
+    entry: {
+      type: "number",
+      exclusiveMinimum: 0,
+    },
+    stop_loss: {
+      type: "number",
+      exclusiveMinimum: 0,
+    },
+    take_profit: {
+      type: "number",
+      exclusiveMinimum: 0,
+    },
+    reason: {
+      type: "string",
+      minLength: 1,
+    },
+  },
+  required: ["decision", "confidence", "entry", "stop_loss", "take_profit", "reason"],
+  additionalProperties: false,
+} as const;
+
 const HOLD_FALLBACK: AIDecision = {
   decision: "HOLD",
   confidence: 0,
@@ -40,15 +73,13 @@ const HOLD_FALLBACK: AIDecision = {
   reason: "AI fallback — unable to generate decision",
 };
 
-let client: Anthropic | null = null;
+let client: OpenAI | null = null;
 let currentApiKey: string | null = null;
-let currentModel: string | null = null;
 
-function getClient(apiKey: string, model: string): Anthropic {
-  if (client && currentApiKey === apiKey && currentModel === model) return client;
-  client = new Anthropic({ apiKey });
+function getClient(apiKey: string): OpenAI {
+  if (client && currentApiKey === apiKey) return client;
+  client = new OpenAI({ apiKey });
   currentApiKey = apiKey;
-  currentModel = model;
   return client;
 }
 
@@ -58,17 +89,17 @@ function delay(ms: number): Promise<void> {
 
 export async function getAIDecision(
   data: AIPromptData,
-  claudeApiKey?: string,
+  openaiApiKey?: string,
   model?: string,
   retryCount?: number,
 ): Promise<AIDecision> {
-  const apiKey = claudeApiKey || process.env.CLAUDE_API_KEY;
+  const apiKey = openaiApiKey || process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    await logger.error("AI", "No Claude API key configured — set it in Settings or .env");
+    await logger.error("AI", "No OpenAI API key configured — set it in Settings or .env");
     return HOLD_FALLBACK;
   }
 
-  const resolvedModel = model || process.env.CLAUDE_MODEL || ENGINE_DEFAULTS.aiModel;
+  const resolvedModel = model || process.env.OPENAI_MODEL || ENGINE_DEFAULTS.aiModel;
   const maxRetries = retryCount ?? ENGINE_DEFAULTS.aiRetryCount;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -78,17 +109,24 @@ export async function getAIDecision(
 
       try {
         const response = await Promise.race([
-          getClient(apiKey, resolvedModel).messages.create(
+          getClient(apiKey).responses.create(
             {
               model: resolvedModel,
-              max_tokens: 512,
-              system: SYSTEM_PROMPT,
-              messages: [
-                {
-                  role: "user",
-                  content: JSON.stringify(data, null, 2),
-                },
+              // Trading prompts can include sensitive strategy and account state.
+              // Disable provider-side storage for this workload.
+              store: false,
+              input: [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: JSON.stringify(data, null, 2) },
               ],
+              text: {
+                format: {
+                  type: "json_schema",
+                  name: "trade_decision",
+                  schema: AI_DECISION_JSON_SCHEMA,
+                  strict: true,
+                },
+              },
             },
             { signal: controller.signal },
           ),
@@ -97,18 +135,19 @@ export async function getAIDecision(
           ),
         ]);
 
-        const text = response.content[0];
-        if (text.type !== "text") {
-          await logger.warn("AI", "AI response was not text", { contentType: text.type });
+        const rawText = response.output_text?.trim();
+        if (!rawText) {
+          await logger.warn("AI", "AI response did not contain output_text");
           return HOLD_FALLBACK;
         }
 
         let parsed: unknown;
         try {
-          parsed = JSON.parse(text.text);
+          parsed = JSON.parse(rawText);
         } catch {
           await logger.error("AI", "AI_PARSE_ERROR: Failed to parse AI response as JSON", {
-            rawResponse: text.text,
+            rawResponse: rawText,
+            model: resolvedModel,
           });
           return HOLD_FALLBACK;
         }
@@ -117,7 +156,8 @@ export async function getAIDecision(
         if (!validated.success) {
           await logger.error("AI", "AI_VALIDATION_ERROR: AI response failed Zod validation", {
             errors: validated.error.issues,
-            rawResponse: text.text,
+            rawResponse: rawText,
+            model: resolvedModel,
           });
           return HOLD_FALLBACK;
         }
@@ -135,6 +175,7 @@ export async function getAIDecision(
         await logger.error("AI", isTimeout ? "AI_TIMEOUT" : "AI_API_ERROR", {
           error: message,
           attempts: attempt + 1,
+          model: resolvedModel,
         });
         return HOLD_FALLBACK;
       }
@@ -144,11 +185,11 @@ export async function getAIDecision(
         error: message,
         attempt: attempt + 1,
         maxRetries,
+        model: resolvedModel,
       });
       await delay(backoffMs);
     }
   }
 
-  // Should be unreachable, but satisfy TypeScript
   return HOLD_FALLBACK;
 }

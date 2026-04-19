@@ -22,9 +22,12 @@ import type {
 import { CustomTitleBar } from "./components/CustomTitleBar";
 import { ConnectivityOverlay } from "./components/ConnectivityOverlay";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { useIdlePolling } from "./hooks/useIdlePolling";
 export default function App() {
   const currentScreen = useAppStore((s) => s.currentScreen);
   const store = useAppStore.getState();
+
+  useIdlePolling();
 
   // Initialize theme from localStorage on app startup
   useEffect(() => {
@@ -52,9 +55,9 @@ export default function App() {
       store.setTheme(theme);
       store.setScreen("dashboard");
 
-      if (data.settings.hasBybitKeys) {
+      if (data.settings.selectedExchange === "paper" || data.settings.hasBybitKeys) {
         api.invoke(IPC.PORTFOLIO_GET).then((p: any) => {
-          if (p) store.setPortfolio(p as PortfolioSnapshot);
+          store.setPortfolio((p as PortfolioSnapshot | null) ?? null);
         }).catch(() => {});
         api.invoke(IPC.POSITIONS_GET).then((pos: any) => {
           store.setPositions(pos as Position[]);

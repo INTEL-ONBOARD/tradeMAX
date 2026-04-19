@@ -6,12 +6,13 @@ export const IPC = {
   AUTH_SESSION: "auth:session",
 
   SETTINGS_SAVE_API_KEYS: "settings:save-api-keys",
-  SETTINGS_SAVE_CLAUDE_KEY: "settings:save-claude-key",
+  SETTINGS_SAVE_OPENAI_KEY: "settings:save-openai-key",
   SETTINGS_GET: "settings:get",
   SETTINGS_UPDATE: "settings:update",
 
   PORTFOLIO_GET: "portfolio:get",
   POSITIONS_GET: "positions:get",
+  POSITION_CLOSE: "position:close",
   TRADES_HISTORY: "trades:history",
   EXCHANGE_CLOSED_PNL: "exchange:closed-pnl",
 
@@ -74,7 +75,7 @@ export const ENGINE_DEFAULTS = {
   maxSlippagePct: 0.5,
   tradeCooldownSec: 30,
   aiRetryCount: 2,
-  aiModel: "claude-sonnet-4-20250514",
+  aiModel: "gpt-5.4-mini",
   maxConsecutiveLosses: 3,
   maxDrawdownPct: 15,
   volatilityThresholdPct: 5,
@@ -90,7 +91,7 @@ export const ENGINE_DEFAULTS = {
   paperStartingBalance: 10000,
   watchlist: [] as readonly string[],
   enableMultiModelVoting: false,
-  votingModels: ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"] as readonly string[],
+  votingModels: ["gpt-5.4-mini", "gpt-5.4-nano"] as readonly string[],
 } as const;
 
 // ─── Allowed IPC Channels (for preload whitelist) ──────

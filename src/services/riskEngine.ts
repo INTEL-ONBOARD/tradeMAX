@@ -107,13 +107,14 @@ const rules: RuleCheck[] = [
     name: "MAX_LEVERAGE",
     check: (ctx) => {
       if (ctx.tradingMode !== "futures") return { pass: true, reason: "Spot mode — leverage check skipped" };
-      const safeLeverage = Math.min(ctx.riskProfile.maxLeverage, 20);
-      const pass = safeLeverage <= 20;
+      const requestedLeverage = ctx.riskProfile.maxLeverage;
+      const hardLimit = 20;
+      const pass = requestedLeverage <= hardLimit;
       return {
         pass,
         reason: pass
-          ? `Leverage ${safeLeverage}x within limit`
-          : `Leverage ${safeLeverage}x exceeds maximum`,
+          ? `Leverage ${requestedLeverage}x within ${hardLimit}x limit`
+          : `Leverage ${requestedLeverage}x exceeds ${hardLimit}x limit`,
       };
     },
   },

@@ -3,8 +3,8 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 // Inlined from shared/constants to avoid sandbox-related module resolution issues
 const ALLOWED_INVOKE_CHANNELS = [
   "auth:register", "auth:login", "auth:logout", "auth:session",
-  "settings:save-api-keys", "settings:save-claude-key", "settings:get", "settings:update",
-  "portfolio:get", "positions:get", "trades:history", "exchange:closed-pnl",
+  "settings:save-api-keys", "settings:save-openai-key", "settings:get", "settings:update",
+  "portfolio:get", "positions:get", "position:close", "trades:history", "exchange:closed-pnl",
   "ai:last-decision", "ai:list-models",
   "agent:start", "agent:stop", "agent:kill-switch", "agent:reset-freeze",
   "logs:recent",

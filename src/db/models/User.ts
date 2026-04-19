@@ -8,7 +8,8 @@ export interface IUser extends Document {
   exchangeKeys: {
     bybit: { apiKey: string; apiSecret: string };
   };
-  claudeApiKey: string;
+  openaiApiKey: string;
+  claudeApiKey?: string;
   selectedExchange: "bybit" | "paper";
   tradingMode: "spot" | "futures";
   riskProfile: {
@@ -62,7 +63,8 @@ const userSchema = new Schema<IUser>(
         apiSecret: { type: String, default: "" },
       },
     },
-    claudeApiKey: { type: String, default: "" },
+    openaiApiKey: { type: String, default: "" },
+    claudeApiKey: { type: String, default: "" }, // legacy fallback for pre-OpenAI installs
     selectedExchange: { type: String, enum: ["bybit", "paper"], default: "bybit" },
     tradingMode: { type: String, enum: ["spot", "futures"], default: "spot" },
     riskProfile: {
@@ -80,7 +82,7 @@ const userSchema = new Schema<IUser>(
       maxSlippagePct: { type: Number, default: 0.5 },
       tradeCooldownSec: { type: Number, default: 30 },
       aiRetryCount: { type: Number, default: 2 },
-      aiModel: { type: String, default: "claude-sonnet-4-20250514" },
+      aiModel: { type: String, default: "gpt-5.4-mini" },
       maxConsecutiveLosses: { type: Number, default: 3 },
       maxDrawdownPct: { type: Number, default: 15 },
       volatilityThresholdPct: { type: Number, default: 5 },
@@ -96,7 +98,7 @@ const userSchema = new Schema<IUser>(
       paperStartingBalance: { type: Number, default: 10000 },
       watchlist: { type: [String], default: [] },
       enableMultiModelVoting: { type: Boolean, default: false },
-      votingModels: { type: [String], default: ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"] },
+      votingModels: { type: [String], default: ["gpt-5.4-mini", "gpt-5.4-nano"] },
     },
     agentModeEnabled: { type: Boolean, default: false },
     themePreference: { type: String, enum: ["dark", "light"], default: "light" },

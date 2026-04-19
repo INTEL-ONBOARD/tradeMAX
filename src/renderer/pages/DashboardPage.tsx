@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SidebarRibbon } from "../components/Sidebar";
 import { AgentControlPanel } from "../components/AgentControlPanel";
 import { PositionsPanel } from "../components/PositionsPanel";
-import { PerformanceMetrics } from "../components/PerformanceMetrics";
 import { TradesPanel } from "../components/TradesPanel";
 import { AIDecisionFeed } from "../components/AIDecisionFeed";
 import { PortfolioPanel } from "../components/PortfolioPanel";
 import { PortfolioModalContent } from "../components/PortfolioModalContent";
 import { LiveLogPanel } from "../components/LiveLogPanel";
 import { BacktestResultsModal } from "../components/BacktestResultsModal";
+import { BacktestRunnerModal, type BacktestRunInput } from "../components/BacktestRunnerModal";
 import { Modal } from "../components/Modal";
-import { Activity, LayoutGrid, Terminal, Wallet } from "../components/icons";
+import { Activity, BarChart3, LayoutGrid, Terminal, Wallet } from "../components/icons";
+import { IPC, STREAM } from "../../shared/constants";
 import type { BacktestResult } from "../../shared/types";
 
 type ToolPanel = "portfolio" | "ai-signal" | "market-scan" | "terminal" | null;
@@ -49,8 +50,34 @@ export function DashboardPage() {
   const [openPanel, setOpenPanel] = useState<ToolPanel>(null);
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   const [backtestOpen, setBacktestOpen] = useState(false);
+  const [backtestRunnerOpen, setBacktestRunnerOpen] = useState(false);
+  const [backtestRunning, setBacktestRunning] = useState(false);
+  const [backtestProgress, setBacktestProgress] = useState<{
+    current: number;
+    total: number;
+    status: string;
+  } | null>(null);
 
   const cfg = openPanel ? panelConfig[openPanel] : null;
+
+  useEffect(() => {
+    return window.api.on(STREAM.BACKTEST_PROGRESS, (data) => {
+      setBacktestProgress(data as { current: number; total: number; status: string });
+    });
+  }, []);
+
+  const handleRunBacktest = async (input: BacktestRunInput) => {
+    setBacktestRunning(true);
+    setBacktestProgress({ current: 0, total: 100, status: "Queued..." });
+    try {
+      const result = await window.api.invoke(IPC.BACKTEST_RUN, input) as BacktestResult;
+      setBacktestResult(result);
+      setBacktestOpen(true);
+      setBacktestRunnerOpen(false);
+    } finally {
+      setBacktestRunning(false);
+    }
+  };
 
   return (
     <div className="h-full w-full flex" style={{ background: "var(--bg-base)" }}>
@@ -79,9 +106,6 @@ export function DashboardPage() {
               {/* Right column — Positions & other panels, scrolls internally */}
               <div className="flex-1 overflow-y-auto p-6">
                 <PositionsPanel />
-                <div className="mt-4">
-                  <PerformanceMetrics />
-                </div>
               </div>
             </motion.div>
           )}
@@ -102,6 +126,7 @@ export function DashboardPage() {
                   <ToolCard title="AI Signal Engine" icon={Activity} onClick={() => setOpenPanel("ai-signal")} />
                   <ToolCard title="Deep Market Scan" icon={LayoutGrid} onClick={() => setOpenPanel("market-scan")} />
                   <ToolCard title="Live Log" icon={Terminal} onClick={() => setOpenPanel("terminal")} />
+                  <ToolCard title="Strategy Backtest" icon={BarChart3} onClick={() => setBacktestRunnerOpen(true)} />
                 </div>
               </div>
 
@@ -144,7 +169,20 @@ export function DashboardPage() {
         </Modal>
       )}
 
-      {/* Backtest results modal — trigger will be wired when backtest UI is added */}
+      <BacktestRunnerModal
+        isOpen={backtestRunnerOpen}
+        onClose={() => {
+          if (!backtestRunning) {
+            setBacktestRunnerOpen(false);
+            setBacktestProgress(null);
+          }
+        }}
+        onRun={handleRunBacktest}
+        running={backtestRunning}
+        progress={backtestProgress}
+      />
+
+      {/* Backtest results modal */}
       <BacktestResultsModal
         isOpen={backtestOpen}
         onClose={() => setBacktestOpen(false)}

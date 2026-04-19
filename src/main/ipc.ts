@@ -1,6 +1,6 @@
 import { ipcMain, Notification, type BrowserWindow } from "electron";
 import { IPC, STREAM } from "../shared/constants.js";
-import { apiKeysSchema, claudeKeySchema, settingsUpdateSchema, agentStartSchema } from "../shared/validators.js";
+import { apiKeysSchema, openaiKeySchema, settingsUpdateSchema, agentStartSchema, closePositionSchema } from "../shared/validators.js";
 import * as auth from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
 import { tradeEngine } from "../services/tradeEngine.js";
@@ -63,8 +63,8 @@ export function registerIpcHandlers(): void {
     setCurrentUserId(result.session.userId);
     await logger.info("AUTH", `User logged in: ${result.session.email}`);
 
-    // Start real-time account streaming if exchange keys are configured
-    if (result.settings.hasBybitKeys) {
+    // Start the idle watcher for the selected exchange when the account can support it.
+    if (result.settings.selectedExchange === "paper" || result.settings.hasBybitKeys) {
       accountWatcher.start(result.session.userId).catch(() => {});
     }
 
@@ -90,14 +90,7 @@ export function registerIpcHandlers(): void {
 
     setCurrentUserId(result.session.userId);
 
-    // Auto-fix: if user has Bybit keys but selectedExchange is wrong, correct it
-    if (result.settings.hasBybitKeys && result.settings.selectedExchange !== "bybit") {
-      const fixed = await auth.updateSettings(result.session.userId, { selectedExchange: "bybit" });
-      result.settings = fixed;
-    }
-
-    // Start real-time streaming if exchange keys are configured
-    if (result.settings.hasBybitKeys) {
+    if (result.settings.selectedExchange === "paper" || result.settings.hasBybitKeys) {
       accountWatcher.start(result.session.userId).catch(() => {});
     }
 
@@ -150,35 +143,37 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC.SETTINGS_SAVE_CLAUDE_KEY, async (_e, data) => {
+  ipcMain.handle(IPC.SETTINGS_SAVE_OPENAI_KEY, async (_e, data) => {
     if (!currentUserId) throw new Error("Not authenticated");
-    const parsed = claudeKeySchema.parse(data);
+    const parsed = openaiKeySchema.parse(data);
 
-    // Validate the key by making a lightweight API call
+    // Validate the key by making a lightweight API call.
     try {
-      const { default: Anthropic } = await import("@anthropic-ai/sdk");
-      const client = new Anthropic({ apiKey: parsed.claudeApiKey });
-      await client.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 1,
-        messages: [{ role: "user", content: "hi" }],
+      const res = await fetch("https://api.openai.com/v1/models", {
+        headers: {
+          Authorization: `Bearer ${parsed.openaiApiKey}`,
+        },
       });
+
+      if (!res.ok) {
+        throw new Error(`OPENAI_VALIDATION_${res.status}`);
+      }
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       if (msg.includes("401") || msg.includes("authentication") || msg.includes("invalid")) {
-        throw new Error("Invalid Claude API key");
+        throw new Error("Invalid OpenAI API key");
       }
       if (msg.includes("permission") || msg.includes("403")) {
-        throw new Error("Claude API key lacks required permissions");
+        throw new Error("OpenAI API key lacks required permissions");
       }
       if (msg.includes("ECONNREFUSED") || msg.includes("ETIMEDOUT") || msg.includes("fetch")) {
-        throw new Error("Could not connect to Anthropic API. Check your internet connection.");
+        throw new Error("Could not connect to OpenAI API. Check your internet connection.");
       }
-      throw new Error(`Claude API key validation failed: ${msg}`);
+      throw new Error(`OpenAI API key validation failed: ${msg}`);
     }
 
-    const updated = await auth.saveClaudeKey(currentUserId, parsed.claudeApiKey);
-    await logger.info("SYSTEM", "Claude API key validated and saved");
+    const updated = await auth.saveOpenAIKey(currentUserId, parsed.openaiApiKey);
+    await logger.info("SYSTEM", "OpenAI API key validated and saved");
     return updated;
   });
 
@@ -192,10 +187,14 @@ export function registerIpcHandlers(): void {
     const parsed = settingsUpdateSchema.parse(data);
     const settings = await auth.updateSettings(currentUserId, parsed);
 
-    // Restart accountWatcher if exchange changed (streams from wrong exchange otherwise)
-    if ((parsed as any).selectedExchange && !tradeEngine.isRunning()) {
+    const shouldRestartWatcher =
+      parsed.selectedExchange !== undefined ||
+      parsed.engineConfig?.tradingSymbol !== undefined ||
+      (settings.selectedExchange === "paper" && parsed.engineConfig?.paperStartingBalance !== undefined);
+
+    if (shouldRestartWatcher && !tradeEngine.isRunning()) {
       await accountWatcher.stop();
-      if (settings.hasBybitKeys) {
+      if (settings.selectedExchange === "paper" || settings.hasBybitKeys) {
         accountWatcher.start(currentUserId).catch(() => {});
       }
     }
@@ -208,7 +207,18 @@ export function registerIpcHandlers(): void {
     if (!currentUserId) throw new Error("Not authenticated");
 
     const user = await auth.getUserDoc(currentUserId);
-    if (user.selectedExchange === "paper") return null;
+    if (user.selectedExchange === "paper") {
+      const exchange = createExchangeService("paper");
+      try {
+        await exchange.initialize({ apiKey: "", apiSecret: "" }, user.tradingMode);
+        if ("setStartingBalance" in exchange) {
+          exchange.setStartingBalance(user.engineConfig.paperStartingBalance ?? 10000);
+        }
+        return await exchange.getBalance();
+      } finally {
+        exchange.destroy();
+      }
+    }
 
     const keys = user.exchangeKeys[user.selectedExchange];
     if (!keys.apiKey || !keys.apiSecret) return null;
@@ -234,7 +244,18 @@ export function registerIpcHandlers(): void {
     if (!currentUserId) throw new Error("Not authenticated");
 
     const user = await auth.getUserDoc(currentUserId);
-    if (user.selectedExchange === "paper") return [];
+    if (user.selectedExchange === "paper") {
+      const exchange = createExchangeService("paper");
+      try {
+        await exchange.initialize({ apiKey: "", apiSecret: "" }, user.tradingMode);
+        if ("setStartingBalance" in exchange) {
+          exchange.setStartingBalance(user.engineConfig.paperStartingBalance ?? 10000);
+        }
+        return await exchange.getOpenPositions();
+      } finally {
+        exchange.destroy();
+      }
+    }
 
     const keys = user.exchangeKeys[user.selectedExchange];
     if (!keys.apiKey || !keys.apiSecret) return [];
@@ -256,12 +277,106 @@ export function registerIpcHandlers(): void {
     }
   });
 
+  ipcMain.handle(IPC.POSITION_CLOSE, async (_e, data) => {
+    if (!currentUserId) throw new Error("Not authenticated");
+
+    const parsed = closePositionSchema.parse(data);
+    const user = await auth.getUserDoc(currentUserId);
+    const userSalt = user.encryptionSalt || undefined;
+    const exchange = createExchangeService(user.selectedExchange);
+
+    const keys = user.exchangeKeys.bybit;
+    const isPaper = user.selectedExchange === "paper";
+    const apiKey = isPaper || !keys.apiKey ? "" : decrypt(keys.apiKey, userSalt);
+    const apiSecret = isPaper || !keys.apiSecret ? "" : decrypt(keys.apiSecret, userSalt);
+
+    try {
+      await exchange.initialize({ apiKey, apiSecret }, user.tradingMode);
+      if (isPaper && "setStartingBalance" in exchange) {
+        exchange.setStartingBalance(user.engineConfig.paperStartingBalance ?? 10000);
+      }
+
+      const positionsBefore = await exchange.getOpenPositions();
+      const currentPosition = positionsBefore.find(
+        (position) => position.symbol === parsed.symbol && position.side === parsed.side,
+      );
+      const orderResult = await exchange.closePosition(parsed.symbol, parsed.side, parsed.quantity);
+      const exitPrice = orderResult.price || currentPosition?.markPrice || currentPosition?.entryPrice || 0;
+
+      const openTrade = await TradeModel.findOne({
+        userId: currentUserId,
+        symbol: parsed.symbol,
+        side: parsed.side,
+        status: "OPEN",
+      }).sort({ createdAt: -1 });
+
+      if (openTrade) {
+        const pnl = parsed.side === "BUY"
+          ? (exitPrice - openTrade.entryPrice) * openTrade.quantity
+          : (openTrade.entryPrice - exitPrice) * openTrade.quantity;
+
+        openTrade.exitPrice = exitPrice;
+        openTrade.pnl = pnl;
+        openTrade.status = "CLOSED";
+        openTrade.closedAt = new Date();
+        await openTrade.save();
+
+        send(STREAM.TRADE_EXECUTED, {
+          _id: openTrade._id.toString(),
+          userId: openTrade.userId.toString(),
+          symbol: openTrade.symbol,
+          side: openTrade.side as "BUY" | "SELL",
+          type: openTrade.type as "MARKET" | "LIMIT",
+          entryPrice: openTrade.entryPrice,
+          exitPrice,
+          quantity: openTrade.quantity,
+          pnl,
+          status: "CLOSED",
+          source: openTrade.source as "AI" | "MANUAL" | "SYSTEM",
+          exchange: openTrade.exchange as "bybit" | "paper",
+          mode: openTrade.mode as "spot" | "futures",
+          aiDecision: openTrade.aiDecision,
+          riskCheck: openTrade.riskCheck,
+          createdAt: openTrade.createdAt.toISOString(),
+          closedAt: openTrade.closedAt.toISOString(),
+        });
+      }
+
+      await logger.info("TRADE", `Manual position close: ${parsed.symbol} ${parsed.side} qty=${parsed.quantity}`, {
+        exitPrice,
+        exchange: user.selectedExchange,
+      });
+
+      return { success: true, exitPrice };
+    } finally {
+      exchange.destroy();
+    }
+  });
+
   // ─── Exchange Closed PnL ─────────────────────────────
   ipcMain.handle(IPC.EXCHANGE_CLOSED_PNL, async () => {
     if (!currentUserId) throw new Error("Not authenticated");
 
     const user = await auth.getUserDoc(currentUserId);
-    if (user.selectedExchange === "paper") return [];
+    if (user.selectedExchange === "paper") {
+      const paperTrades = await TradeModel.find({
+        userId: currentUserId,
+        exchange: "paper",
+        status: "CLOSED",
+      })
+        .sort({ closedAt: 1 })
+        .lean();
+
+      return paperTrades.map((t) => ({
+        symbol: t.symbol,
+        side: t.side as "BUY" | "SELL",
+        quantity: t.quantity,
+        entryPrice: t.entryPrice,
+        exitPrice: t.exitPrice ?? 0,
+        pnl: t.pnl ?? 0,
+        closedAt: t.closedAt?.toISOString() ?? t.createdAt.toISOString(),
+      }));
+    }
 
     const keys = user.exchangeKeys.bybit;
     if (!keys.apiKey || !keys.apiSecret) return [];
@@ -321,18 +436,22 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.AI_LIST_MODELS, async () => {
     if (!currentUserId) throw new Error("Not authenticated");
     const user = await auth.getUserDoc(currentUserId);
-    if (!user.claudeApiKey) throw new Error("No Claude API key configured");
+    const encryptedAIKey = user.openaiApiKey || user.claudeApiKey;
+    if (!encryptedAIKey) throw new Error("No OpenAI API key configured");
     const userSalt = user.encryptionSalt || undefined;
-    const apiKey = decrypt(user.claudeApiKey, userSalt);
-    const res = await fetch("https://api.anthropic.com/v1/models", {
+    const apiKey = decrypt(encryptedAIKey, userSalt);
+    const res = await fetch("https://api.openai.com/v1/models", {
       headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        Authorization: `Bearer ${apiKey}`,
       },
     });
     if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
-    const json = await res.json() as { data: { id: string; display_name: string }[] };
-    return json.data.map((m) => ({ id: m.id, name: m.display_name }));
+    const json = await res.json() as { data: { id: string; object: string; owned_by: string }[] };
+
+    return json.data
+      .map((m) => ({ id: m.id, name: m.id }))
+      .filter((m) => m.id.startsWith("gpt-"))
+      .sort((a, b) => a.id.localeCompare(b.id));
   });
 
   // ─── Agent Control ───────────────────────────────────
@@ -450,7 +569,8 @@ export function registerIpcHandlers(): void {
     };
 
     const userSalt = user.encryptionSalt || undefined;
-    const claudeApiKey = user.claudeApiKey ? decrypt(user.claudeApiKey, userSalt) : undefined;
+    const encryptedAIKey = user.openaiApiKey || user.claudeApiKey;
+    const openaiApiKey = encryptedAIKey ? decrypt(encryptedAIKey, userSalt) : undefined;
 
     const result = await runBacktest(
       {
@@ -462,7 +582,7 @@ export function registerIpcHandlers(): void {
         startingBalance: config.startingBalance,
         riskProfile: user.riskProfile,
         engineConfig: user.engineConfig,
-        claudeApiKey,
+        openaiApiKey,
       },
       (progress) => send(STREAM.BACKTEST_PROGRESS, progress),
     );

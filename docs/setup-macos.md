@@ -5,7 +5,7 @@
 - macOS 13 Ventura or later
 - Node.js 20 or later (`node --version` to verify)
 - A MongoDB Atlas account with a cluster created
-- A Claude API key (Anthropic console)
+- An OpenAI API key
 
 ---
 
@@ -36,9 +36,9 @@ APP_MASTER_KEY=<64 random hex chars>
 # MongoDB Atlas
 MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/?retryWrites=true&w=majority
 
-# Claude AI
-CLAUDE_API_KEY=sk-ant-<your-key>
-CLAUDE_MODEL=claude-sonnet-4-20250514
+# OpenAI
+OPENAI_API_KEY=sk-proj-<your-key>
+OPENAI_MODEL=gpt-5.4-mini
 
 # Defaults
 DEFAULT_SYMBOL=BTCUSDT
@@ -53,7 +53,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 **MONGODB_URI** — Copy the connection string from MongoDB Atlas (Clusters → Connect → Drivers). Replace `<user>` and `<pass>` with your database user credentials.
 
-**CLAUDE_API_KEY** — From the [Anthropic console](https://console.anthropic.com). The app calls Claude only from the main process; the key is never exposed to the renderer.
+**OPENAI_API_KEY** — From the [OpenAI API keys page](https://platform.openai.com/api-keys). The app calls OpenAI only from the main process; the key is never exposed to the renderer.
 
 ---
 

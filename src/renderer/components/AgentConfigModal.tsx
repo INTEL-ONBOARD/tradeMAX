@@ -104,7 +104,7 @@ function NotConfiguredOverlay({ onClose }: { onClose: () => void }) {
         </div>
         <h3 className="text-base font-bold text-[var(--text-primary)] mb-2">Setup Required</h3>
         <p className="text-xs text-[var(--text-secondary)] mb-1.5">
-          Please configure your <strong>Exchange API keys</strong> and <strong>Claude AI key</strong> before using the trading agent.
+          Please configure your <strong>Exchange API keys</strong> and <strong>OpenAI API key</strong> before using the trading agent.
         </p>
         <p className="text-[11px] text-[var(--text-tertiary)] mb-5">
           Go to <span className="inline-flex items-center gap-0.5"><Shield size={10} /> Settings</span> &gt; <span className="inline-flex items-center gap-0.5"><Key size={10} /> API & Auth</span> to add your keys.
@@ -164,10 +164,10 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
       settings.riskProfile?.minConfidence || 0.75,
     ));
 
-    const hasClaudeKey = settings.hasClaudeKey;
+    const hasOpenAIKey = settings.hasOpenAIKey;
 
-    // Quick check: if we already know Claude key is missing, show overlay immediately
-    if (!hasClaudeKey) {
+    // Quick check: if we already know the AI key is missing, show overlay immediately
+    if (!hasOpenAIKey) {
       setConfigStatus(false);
       return;
     }
@@ -178,7 +178,7 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
     window.api.invoke(IPC.EXCHANGE_PAIRS)
       .then((result) => {
         const res = result as { configured: boolean; pairs: string[] };
-        setConfigStatus(res.configured && !!hasClaudeKey);
+        setConfigStatus(res.configured && !!hasOpenAIKey);
         setExchangePairs(res.pairs);
       })
       .catch(() => {
@@ -238,7 +238,7 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
                 <Crosshair size={12} className="text-[var(--text-tertiary)]" />
                 Currency Pair
               </label>
-              {/* AI Auto toggle */}
+              {/* Auto pair toggle */}
               <button
                 onClick={() => setAutoPair(!autoPair)}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
@@ -248,13 +248,13 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
                 }`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${autoPair ? "bg-white" : "bg-[var(--text-tertiary)]"}`} />
-                AI Auto
+                Auto Pair
               </button>
             </div>
 
             {autoPair ? (
               <div className="flex items-center justify-center py-3 rounded-lg border border-dashed border-[var(--color-profit)]" style={{ background: "rgba(16,185,129,0.05)" }}>
-                <p className="text-xs text-[var(--color-profit)] font-medium">AI will select the best pair automatically</p>
+                <p className="text-xs text-[var(--color-profit)] font-medium">The system will pick the strongest pair from your watchlist before trading</p>
               </div>
             ) : (
               <PairDropdown

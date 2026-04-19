@@ -15,7 +15,7 @@ export interface BacktestConfig {
   startingBalance: number;
   riskProfile: RiskProfile;
   engineConfig: EngineConfig;
-  claudeApiKey?: string;
+  openaiApiKey?: string;
 }
 
 export interface BacktestTrade {
@@ -244,7 +244,7 @@ export async function runBacktest(
     // Get AI decision
     let decision: AIDecision;
     try {
-      decision = await getAIDecision(promptData, config.claudeApiKey, config.engineConfig.aiModel, 0);
+      decision = await getAIDecision(promptData, config.openaiApiKey, config.engineConfig.aiModel, 0);
     } catch {
       continue;
     }

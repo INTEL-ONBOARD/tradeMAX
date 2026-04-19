@@ -13,12 +13,30 @@ export const loginSchema = z.object({
 
 export const apiKeysSchema = z.object({
   exchange: z.enum(["bybit", "paper"]),
-  apiKey: z.string().min(1),
-  apiSecret: z.string().min(1),
+  apiKey: z.string(),
+  apiSecret: z.string(),
+}).superRefine((data, ctx) => {
+  if (data.exchange === "paper") return;
+
+  if (data.apiKey.trim().length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["apiKey"],
+      message: "API key is required",
+    });
+  }
+
+  if (data.apiSecret.trim().length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["apiSecret"],
+      message: "API secret is required",
+    });
+  }
 });
 
-export const claudeKeySchema = z.object({
-  claudeApiKey: z.string().min(1),
+export const openaiKeySchema = z.object({
+  openaiApiKey: z.string().min(1),
 });
 
 export const engineConfigSchema = z.object({
@@ -59,7 +77,7 @@ export const settingsUpdateSchema = z.object({
       maxDailyLossPct: z.number().min(1).max(20).optional(),
       maxOpenPositions: z.number().int().min(1).max(20).optional(),
       minConfidence: z.number().min(0).max(1).optional(),
-      maxLeverage: z.number().int().min(1).max(125).optional(),
+      maxLeverage: z.number().int().min(1).max(20).optional(),
     })
     .optional(),
   engineConfig: engineConfigSchema.optional(),
@@ -76,4 +94,10 @@ export const aiDecisionSchema = z.object({
 
 export const agentStartSchema = z.object({
   symbol: z.string().min(1).max(20).toUpperCase(),
+});
+
+export const closePositionSchema = z.object({
+  symbol: z.string().min(1).max(20).toUpperCase(),
+  side: z.enum(["BUY", "SELL"]),
+  quantity: z.number().positive(),
 });

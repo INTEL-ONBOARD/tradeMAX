@@ -15,10 +15,12 @@
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
     "build:preload": "tsc -p tsconfig.preload.json",
-    "test": "jest"
+    "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
+    "dist:win": "npm run build && electron-builder --win nsis --publish never",
+    "dist:linux": "npm run build && electron-builder --linux AppImage --publish never",
+    "test": "jest --watchman=false"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.51.0",
     "axios": "^1.9.0",
     "bcrypt": "^5.1.1",
     "bybit-api": "^4.3.7",
@@ -28,6 +30,7 @@
     "framer-motion": "^12.10.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.14.1",
+    "openai": "^6.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^3.3.0",
@@ -62,13 +65,39 @@
   "build": {
     "appId": "com.trademax.desktop",
     "productName": "TradeMAX",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
     "files": [
       "dist/**/*",
       "package.json"
     ],
     "mac": {
-      "target": "dmg",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "icon": "icon.icns",
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.finance"
+    },
+    "dmg": {
+      "icon": "icon.icns"
+    },
+    "win": {
+      "artifactName": "${productName}-${version}-win-${arch}.${ext}",
+      "icon": "icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
+      "icon": "icon.png",
+      "target": [
+        "AppImage"
+      ],
+      "category": "Finance"
     }
   }
 }
