@@ -11,8 +11,22 @@ permissions:
 
 jobs:
   build-macos:
-    name: Build macOS
-    runs-on: macos-13
+    name: Build macOS (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Intel
+            runner: macos-15-intel
+            arch: x64
+            build_script: npm run dist:mac:intel
+            artifact_name: trademax-macos-intel
+          - label: Apple Silicon
+            runner: macos-15
+            arch: arm64
+            build_script: npm run dist:mac:arm64
+            artifact_name: trademax-macos-arm64
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       CSC_LINK: ${{ secrets.APPLE_SIGNING_CERTIFICATE_P12 }}
@@ -46,16 +60,16 @@ jobs:
           fi
 
       - name: Build macOS artifact
-        run: npm run dist:mac
+        run: ${{ matrix.build_script }}
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: trademax-macos
+          name: ${{ matrix.artifact_name }}
           path: |
-            release/*.dmg
-            release/*.dmg.blockmap
-            release/latest*.yml
+            release/*-mac-${{ matrix.arch }}.dmg
+            release/*-mac-${{ matrix.arch }}.dmg.blockmap
+            release/latest-mac.yml
           if-no-files-found: error
           retention-days: 14
 
