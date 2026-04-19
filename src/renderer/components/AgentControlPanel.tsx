@@ -6,6 +6,7 @@ import { Sliders } from "./icons";
 
 export function AgentControlPanel() {
   const agentStatus = useAppStore((s) => s.agentStatus);
+  const marketTick = useAppStore((s) => s.marketTick);
   const [confirmKill, setConfirmKill] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
@@ -13,6 +14,7 @@ export function AgentControlPanel() {
   const settings = useAppStore((s) => s.settings);
   const symbol = settings?.engineConfig?.tradingSymbol || "BTCUSDT";
   const autoPair = settings?.engineConfig?.autoPairSelection || false;
+  const activeSymbol = autoPair ? (marketTick?.symbol || symbol) : symbol;
 
   const handleToggleAgent = async () => {
     setToggling(true);
@@ -68,7 +70,7 @@ export function AgentControlPanel() {
       {/* Pair badge + Config button */}
       <div className="flex items-center gap-2 mb-6">
         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--bg-inset)] text-[var(--text-secondary)] border border-[var(--border)]">
-          {autoPair ? "AI AUTO" : symbol}
+          {autoPair ? `AUTO ${activeSymbol}` : activeSymbol}
         </span>
         <button
           onClick={() => setConfigOpen(true)}

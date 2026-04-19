@@ -3,7 +3,7 @@ import { Modal } from "./Modal";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
 import { Settings, Shield, Edit3, Monitor, CheckCircle, Loader2 } from "./icons";
-import type { UserSettings } from "../../shared/types";
+import type { ClosedPnlRecord, PortfolioSnapshot, Position, UserSettings } from "../../shared/types";
 
 function useDebouncedCallback<T extends (...args: any[]) => any>(fn: T, delay: number): T {
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -67,7 +67,15 @@ function NumberInput({
   );
 }
 
-function TextInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function TextInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
   const [local, setLocal] = useState(value);
   const debouncedOnChange = useDebouncedCallback(onChange, 500);
 
@@ -81,7 +89,7 @@ function TextInput({ value, onChange }: { value: string; onChange: (v: string) =
         setLocal(e.target.value);
         debouncedOnChange(e.target.value);
       }}
-      className="w-40 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+      className={className ?? "w-40 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"}
     />
   );
 }
@@ -225,50 +233,131 @@ function ExchangeKeyRow({ exchange }: { exchange: "bybit" }) {
 function APIKeysTab() {
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
+  const setPortfolio = useAppStore((s) => s.setPortfolio);
+  const setPositions = useAppStore((s) => s.setPositions);
+  const setExchangeHistory = useAppStore((s) => s.setExchangeHistory);
+  const agentRunning = useAppStore((s) => s.agentStatus.running);
 
-  const [claudeKey, setClaudeKey] = useState("");
-  const [savedClaude, setSavedClaude] = useState(false);
-  const [savingClaude, setSavingClaude] = useState(false);
-  const [claudeError, setClaudeError] = useState<string | null>(null);
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [savedOpenAI, setSavedOpenAI] = useState(false);
+  const [savingOpenAI, setSavingOpenAI] = useState(false);
+  const [openaiError, setOpenaiError] = useState<string | null>(null);
+  const [switchingExchange, setSwitchingExchange] = useState(false);
 
-  const handleSaveClaude = async () => {
-    if (!claudeKey) return;
-    setSavingClaude(true);
-    setClaudeError(null);
+  const refreshRuntimeState = async () => {
+    const [portfolio, positions, closedPnl] = await Promise.all([
+      window.api.invoke(IPC.PORTFOLIO_GET).catch(() => null),
+      window.api.invoke(IPC.POSITIONS_GET).catch(() => []),
+      window.api.invoke(IPC.EXCHANGE_CLOSED_PNL).catch(() => []),
+    ]);
+
+    setPortfolio((portfolio as PortfolioSnapshot | null) ?? null);
+    setPositions((positions as Position[]) ?? []);
+    setExchangeHistory((closedPnl as ClosedPnlRecord[]) ?? []);
+  };
+
+  const handleSaveOpenAI = async () => {
+    if (!openaiKey) return;
+    setSavingOpenAI(true);
+    setOpenaiError(null);
     try {
-      const updated = await window.api.invoke(IPC.SETTINGS_SAVE_CLAUDE_KEY, { claudeApiKey: claudeKey });
+      const updated = await window.api.invoke(IPC.SETTINGS_SAVE_OPENAI_KEY, { openaiApiKey: openaiKey });
       setSettings(updated as UserSettings);
-      setClaudeKey("");
-      setSavedClaude(true);
-      setTimeout(() => setSavedClaude(false), 2500);
+      setOpenaiKey("");
+      setSavedOpenAI(true);
+      setTimeout(() => setSavedOpenAI(false), 2500);
     } catch (err: any) {
-      setClaudeError(err?.message ?? "Validation failed");
+      setOpenaiError(err?.message ?? "Validation failed");
     } finally {
-      setSavingClaude(false);
+      setSavingOpenAI(false);
+    }
+  };
+
+  const handleExchangeChange = async (exchange: "bybit" | "paper") => {
+    if (!settings || settings.selectedExchange === exchange) return;
+
+    setSwitchingExchange(true);
+    try {
+      const updated = await window.api.invoke(IPC.SETTINGS_UPDATE, {
+        selectedExchange: exchange,
+      }) as UserSettings;
+
+      setSettings(updated);
+
+      if (exchange === "paper" || updated.hasBybitKeys) {
+        await refreshRuntimeState();
+      } else {
+        setPortfolio(null);
+        setPositions([]);
+        setExchangeHistory([]);
+      }
+    } finally {
+      setSwitchingExchange(false);
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Claude AI Key */}
       <div>
         <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
           <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
-            Claude AI Key
+            Execution Venue
+          </h3>
+        </div>
+        <SettingRow
+          label="Trading Exchange"
+          description="Choose between live Bybit execution and local paper simulation"
+        >
+          <div className="flex items-center gap-2 p-1 bg-[var(--bg-inset)] rounded-lg border border-[var(--border)]">
+            {(["paper", "bybit"] as const).map((exchange) => {
+              const active = settings?.selectedExchange === exchange;
+              const label = exchange === "paper" ? "Paper" : "Bybit";
+              return (
+                <button
+                  key={exchange}
+                  onClick={() => void handleExchangeChange(exchange)}
+                  disabled={switchingExchange || agentRunning}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    active ? "bg-[var(--bg-overlay)] text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </SettingRow>
+        <p className="text-[11px] text-[var(--text-tertiary)] px-1">
+          {settings?.selectedExchange === "paper"
+            ? "Paper mode uses public market data with simulated fills and no exchange API keys."
+            : "Bybit mode uses your validated exchange credentials for real balances and live execution."}
+        </p>
+        {agentRunning && (
+          <p className="text-[11px] text-[var(--color-warn)] px-1 mt-2">
+            Stop the agent before changing the execution venue.
+          </p>
+        )}
+      </div>
+
+      {/* OpenAI Key */}
+      <div>
+        <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+          <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
+            OpenAI API Key
           </h3>
           <button
-            onClick={handleSaveClaude}
-            disabled={!claudeKey || savingClaude}
+            onClick={handleSaveOpenAI}
+            disabled={!openaiKey || savingOpenAI}
             className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
-              background: savedClaude ? "var(--color-profit-bg)" : "var(--color-info-bg)",
-              color: savedClaude ? "var(--color-profit)" : "var(--color-info)",
-              border: `1px solid ${savedClaude ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
+              background: savedOpenAI ? "var(--color-profit-bg)" : "var(--color-info-bg)",
+              color: savedOpenAI ? "var(--color-profit)" : "var(--color-info)",
+              border: `1px solid ${savedOpenAI ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
             }}
           >
-            {savingClaude ? (
+            {savingOpenAI ? (
               <><Loader2 size={11} className="animate-spin" /> Validating...</>
-            ) : savedClaude ? (
+            ) : savedOpenAI ? (
               <><CheckCircle size={11} /> Validated</>
             ) : (
               "Save"
@@ -276,25 +365,25 @@ function APIKeysTab() {
           </button>
         </div>
         <SettingRow
-          label="Anthropic API Key"
-          description={settings?.hasClaudeKey ? "Key is active and encrypted locally" : "Required for AI-powered trade analysis"}
+          label="OpenAI API Key"
+          description={settings?.hasOpenAIKey ? "Key is active and encrypted locally" : "Required for GPT-powered trade analysis"}
         >
           <div className="flex items-center gap-2">
-            {settings?.hasClaudeKey && (
+            {settings?.hasOpenAIKey && (
               <span className="flex items-center gap-1 text-[10px] text-[var(--color-profit)] font-medium">
                 <CheckCircle size={10} /> Active
               </span>
             )}
             <PasswordInput
-              value={claudeKey}
-              placeholder={settings?.hasClaudeKey ? "••••••••••••" : "sk-ant-..."}
-              onChange={(v) => { setClaudeKey(v); setClaudeError(null); }}
+              value={openaiKey}
+              placeholder={settings?.hasOpenAIKey ? "••••••••••••" : "sk-proj-..."}
+              onChange={(v) => { setOpenaiKey(v); setOpenaiError(null); }}
             />
           </div>
         </SettingRow>
-        {claudeError && (
+        {openaiError && (
           <div className="px-1 py-2">
-            <p className="text-[11px] text-[var(--color-loss)] font-medium">{claudeError}</p>
+            <p className="text-[11px] text-[var(--color-loss)] font-medium">{openaiError}</p>
           </div>
         )}
       </div>
@@ -304,6 +393,9 @@ function APIKeysTab() {
         <h3 className="text-[14px] font-semibold text-[var(--text-primary)] border-b border-[var(--border)] pb-2">
           Bybit API Keys
         </h3>
+        <p className="text-[11px] text-[var(--text-tertiary)] mt-2">
+          Required only when Bybit is selected as the active execution venue.
+        </p>
         <ExchangeKeyRow exchange="bybit" />
       </div>
     </div>
@@ -554,6 +646,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <SettingRow label="Trading Symbol" description="The trading pair symbol (e.g. BTCUSDT)">
                     <TextInput value={ec.tradingSymbol} onChange={(v) => updateEngineConfig("tradingSymbol", v)} />
                   </SettingRow>
+                  <SettingRow label="Auto Pair Selection" description="Pick the strongest pair from your watchlist before the agent starts trading">
+                    <Toggle checked={ec.autoPairSelection} onChange={(v) => updateEngineConfig("autoPairSelection", v)} />
+                  </SettingRow>
+                  <SettingRow label="Auto Pair Watchlist" description="Comma-separated symbols scanned when auto pair selection is enabled">
+                    <TextInput
+                      value={(ec.watchlist ?? []).join(", ")}
+                      onChange={(v) => updateEngineConfig("watchlist", v.split(",").map((s) => s.trim()).filter(Boolean))}
+                      className="w-64 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+                    />
+                  </SettingRow>
                   <SettingRow label="Loop Interval (sec)" description="Seconds between each trading loop iteration (3 - 120)">
                     <NumberInput value={ec.loopIntervalSec} min={3} max={120} step={1} onChange={(v) => updateEngineConfig("loopIntervalSec", Math.round(v))} />
                   </SettingRow>
@@ -614,6 +716,24 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </SettingRow>
                   <SettingRow label="Enable Bollinger Bands" description="Include Bollinger Bands indicator in AI analysis">
                     <Toggle checked={ec.enableBollingerBands} onChange={(v) => updateEngineConfig("enableBollingerBands", v)} />
+                  </SettingRow>
+                  <SettingRow label="Enable ADX" description="Include ADX trend-strength analysis">
+                    <Toggle checked={ec.enableADX} onChange={(v) => updateEngineConfig("enableADX", v)} />
+                  </SettingRow>
+                  <SettingRow label="Enable ATR" description="Include ATR volatility analysis">
+                    <Toggle checked={ec.enableATR} onChange={(v) => updateEngineConfig("enableATR", v)} />
+                  </SettingRow>
+                  <SettingRow label="Enable Stochastic" description="Include stochastic momentum analysis">
+                    <Toggle checked={ec.enableStochastic} onChange={(v) => updateEngineConfig("enableStochastic", v)} />
+                  </SettingRow>
+                  <SettingRow label="Enable Trailing Stop" description="Raise or lower stop levels as the market moves in your favor">
+                    <Toggle checked={ec.enableTrailingStop} onChange={(v) => updateEngineConfig("enableTrailingStop", v)} />
+                  </SettingRow>
+                  <SettingRow label="Trailing Stop %" description="Trailing stop distance used when trailing stops are enabled (0.1 - 10)">
+                    <NumberInput value={ec.trailingStopPct} min={0.1} max={10} step={0.1} onChange={(v) => updateEngineConfig("trailingStopPct", v)} />
+                  </SettingRow>
+                  <SettingRow label="Paper Starting Balance" description="Starting account balance for local paper trading (100 - 1,000,000)">
+                    <NumberInput value={ec.paperStartingBalance} min={100} max={1000000} step={100} onChange={(v) => updateEngineConfig("paperStartingBalance", Math.round(v))} />
                   </SettingRow>
                 </div>
               ) : (

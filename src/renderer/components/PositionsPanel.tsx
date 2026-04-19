@@ -6,7 +6,12 @@ import { Layers } from "./icons";
 
 export function PositionsPanel() {
   const positions = useAppStore((s) => s.positions);
+  const marketTick = useAppStore((s) => s.marketTick);
+  const agentRunning = useAppStore((s) => s.agentStatus.running);
+  const setPositions = useAppStore((s) => s.setPositions);
+  const setPortfolio = useAppStore((s) => s.setPortfolio);
   const [confirmingCloseAll, setConfirmingCloseAll] = useState(false);
+  const [closingKey, setClosingKey] = useState<string | null>(null);
 
   const handleCloseAll = async () => {
     if (!confirmingCloseAll) {
@@ -20,6 +25,24 @@ export function PositionsPanel() {
       console.error("Kill switch failed:", err);
     }
     setConfirmingCloseAll(false);
+  };
+
+  const handleClosePosition = async (symbol: string, side: "BUY" | "SELL", quantity: number) => {
+    const key = `${symbol}-${side}`;
+    setClosingKey(key);
+    try {
+      await window.api.invoke(IPC.POSITION_CLOSE, { symbol, side, quantity });
+      const [latestPositions, latestPortfolio] = await Promise.all([
+        window.api.invoke(IPC.POSITIONS_GET).catch(() => []),
+        window.api.invoke(IPC.PORTFOLIO_GET).catch(() => null),
+      ]);
+      setPositions((latestPositions as typeof positions) ?? []);
+      setPortfolio((latestPortfolio as any) ?? null);
+    } catch (err) {
+      console.error("Position close failed:", err);
+    } finally {
+      setClosingKey(null);
+    }
   };
 
   return (
@@ -69,7 +92,10 @@ export function PositionsPanel() {
         <div className="p-8 text-center text-[var(--text-tertiary)] text-xs">No active positions</div>
       ) : (
         <div className="flex flex-col">
-          {positions.map((p, i) => (
+          {positions.map((p, i) => {
+            const livePrice = marketTick?.symbol === p.symbol ? marketTick.price : p.markPrice;
+            const livePnl = (livePrice - p.entryPrice) * p.quantity * (p.side === "BUY" ? 1 : -1);
+            return (
             <motion.div
               key={`${p.symbol}-${i}`}
               initial={{ opacity: 0, y: 10 }}
@@ -87,8 +113,8 @@ export function PositionsPanel() {
                 <div>
                   <p className="text-[13px] font-semibold text-[var(--text-primary)] tracking-wide">{p.symbol}</p>
                   <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
-                     PnL: <span className={p.unrealizedPnl >= 0 ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"}>
-                       {p.unrealizedPnl >= 0 ? "+" : ""}{p.unrealizedPnl.toFixed(2)}
+                     PnL: <span className={livePnl >= 0 ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"}>
+                       {livePnl >= 0 ? "+" : ""}{livePnl.toFixed(2)}
                      </span>
                   </p>
                 </div>
@@ -97,19 +123,21 @@ export function PositionsPanel() {
               <div className="flex items-center gap-8">
                 <div className="hidden md:block text-right">
                    <p className="text-[10px] text-[var(--text-tertiary)] font-mono">Entry: {p.entryPrice.toLocaleString()}</p>
-                   <p className="text-[10px] text-[var(--color-info)] font-mono mt-0.5">Mark: {p.markPrice.toLocaleString()}</p>
+                   <p className="text-[10px] text-[var(--color-info)] font-mono mt-0.5">Mark: {livePrice.toLocaleString()}</p>
                 </div>
                 
                 <button
-                  disabled
-                  title="Close via exchange"
-                  className="flex items-center gap-3 px-6 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-strong)] text-[var(--text-tertiary)] text-xs font-medium rounded-sm cursor-not-allowed opacity-60"
+                  onClick={() => void handleClosePosition(p.symbol, p.side, p.quantity)}
+                  disabled={agentRunning || closingKey === `${p.symbol}-${p.side}`}
+                  title={agentRunning ? "Stop the agent before manually closing a position" : "Close this position"}
+                  className="flex items-center gap-3 px-6 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-strong)] text-[var(--text-tertiary)] text-xs font-medium rounded-sm transition-colors hover:border-[var(--color-loss)] hover:text-[var(--color-loss)] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Close
+                  {closingKey === `${p.symbol}-${p.side}` ? "Closing..." : "Close"}
                 </button>
               </div>
             </motion.div>
-          ))}
+            );
+          })}
           
           <div className="mt-2 text-xs text-[var(--text-tertiary)] opacity-50 px-2 pb-6">
              Closed (Recent 50)

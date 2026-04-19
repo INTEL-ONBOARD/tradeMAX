@@ -12,7 +12,7 @@ export interface UserSettings {
   engineConfig: EngineConfig;
   agentModeEnabled: boolean;
   themePreference: "dark" | "light";
-  hasClaudeKey: boolean;
+  hasOpenAIKey: boolean;
   hasBybitKeys: boolean;
 }
 

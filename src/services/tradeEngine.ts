@@ -10,6 +10,7 @@ import { decrypt } from "./encryptionService.js";
 import { getUserDoc } from "./authService.js";
 import { TradeModel } from "../db/models/Trade.js";
 import { CandleAggregator } from "./candleAggregator.js";
+import { AUTO_PAIR_FALLBACKS, selectBestAutoPair, type AutoPairTicker } from "./autoPairSelection.js";
 import { ENGINE } from "../shared/constants.js";
 import type {
   AIDecision,
@@ -32,6 +33,38 @@ type StreamCallback = {
   onAgentStatus?: (status: AgentStatus) => void;
 };
 
+async function fetchBestAutoPair(
+  candidates: string[],
+  mode: "spot" | "futures",
+): Promise<string | null> {
+  const normalizedCandidates = candidates.map((symbol) => symbol.toUpperCase());
+  if (normalizedCandidates.length === 0) return null;
+
+  const category = mode === "spot" ? "spot" : "linear";
+  const res = await fetch(`https://api.bybit.com/v5/market/tickers?category=${category}`);
+  if (!res.ok) {
+    throw new Error(`AUTO_PAIR_FETCH_${res.status}`);
+  }
+
+  const json = await res.json() as {
+    result?: {
+      list?: Array<{
+        symbol: string;
+        turnover24h?: string;
+        price24hPcnt?: string;
+      }>;
+    };
+  };
+
+  const tickers: AutoPairTicker[] = (json.result?.list ?? []).map((ticker) => ({
+    symbol: ticker.symbol,
+    turnover24h: parseFloat(ticker.turnover24h || "0") || 0,
+    priceChangePct24h: Math.abs((parseFloat(ticker.price24hPcnt || "0") || 0) * 100),
+  }));
+
+  return selectBestAutoPair(normalizedCandidates, tickers);
+}
+
 export class TradeEngine {
   private userId: string = "";
   private symbol: string = "";
@@ -42,7 +75,7 @@ export class TradeEngine {
   private lastAIDecision: AIDecision | null = null;
   private callbacks: StreamCallback = {};
   private apiFailures = 0;
-  private claudeApiKey: string | undefined = undefined;
+  private openaiApiKey: string | undefined = undefined;
   private engineConfig: EngineConfig | null = null;
 
   // Trailing stop tracking: tradeId -> best price seen since entry
@@ -119,11 +152,31 @@ export class TradeEngine {
       decryptedSecret = decrypt(keys.apiSecret, userSalt);
     }
 
-    // Decrypt Claude API key if user has one stored
-    this.claudeApiKey = user.claudeApiKey ? decrypt(user.claudeApiKey, userSalt) : undefined;
+    // Support both the new OpenAI key field and the legacy Claude field for migration.
+    const encryptedAIKey = user.openaiApiKey || user.claudeApiKey;
+    this.openaiApiKey = encryptedAIKey ? decrypt(encryptedAIKey, userSalt) : undefined;
 
     this.exchange = createExchangeService(selectedExchange);
     await this.exchange.initialize({ apiKey: decryptedKey, apiSecret: decryptedSecret }, user.tradingMode);
+
+    if (this.engineConfig.autoPairSelection) {
+      const autoPairCandidates = this.engineConfig.watchlist.length > 0
+        ? this.engineConfig.watchlist
+        : [...AUTO_PAIR_FALLBACKS];
+
+      try {
+        const autoPair = await fetchBestAutoPair(autoPairCandidates, user.tradingMode);
+        if (autoPair) {
+          this.symbol = autoPair;
+          await logger.info("SYSTEM", `Auto pair selection chose ${autoPair}`, {
+            candidates: autoPairCandidates,
+            mode: user.tradingMode,
+          });
+        }
+      } catch (err) {
+        await logger.warn("SYSTEM", `Auto pair selection failed, keeping ${this.symbol}: ${err}`);
+      }
+    }
 
     // Set starting balance for paper trading
     if (isPaper && "setStartingBalance" in this.exchange) {
@@ -167,6 +220,7 @@ export class TradeEngine {
     this.exchange?.destroy();
     this.exchange = null;
     this.candleAggregator = null;
+    this.openaiApiKey = undefined;
 
     this.running = false;
     this.emitStatus();
@@ -541,14 +595,14 @@ export class TradeEngine {
       if (this.engineConfig.enableMultiModelVoting && this.engineConfig.votingModels.length > 1) {
         decision = await getVotedDecision(
           promptData,
-          this.claudeApiKey,
+          this.openaiApiKey,
           this.engineConfig.votingModels as string[],
           this.engineConfig.aiRetryCount,
         );
       } else {
         decision = await getAIDecision(
           promptData,
-          this.claudeApiKey,
+          this.openaiApiKey,
           this.engineConfig.aiModel,
           this.engineConfig.aiRetryCount,
         );

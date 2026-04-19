@@ -52,6 +52,8 @@ function toSession(user: IUser): UserSession {
 }
 
 function toSettings(user: IUser): UserSettings {
+  const hasOpenAIKey = !!(user.openaiApiKey || user.claudeApiKey);
+
   // JSON round-trip strips Mongoose internals that can't be cloned via Electron IPC
   return JSON.parse(JSON.stringify({
     selectedExchange: user.selectedExchange,
@@ -60,7 +62,7 @@ function toSettings(user: IUser): UserSettings {
     engineConfig: user.engineConfig,
     agentModeEnabled: user.agentModeEnabled,
     themePreference: user.themePreference,
-    hasClaudeKey: !!user.claudeApiKey,
+    hasOpenAIKey,
     hasBybitKeys: !!(user.exchangeKeys.bybit.apiKey && user.exchangeKeys.bybit.apiSecret),
   }));
 }
@@ -175,12 +177,19 @@ export async function getSettings(userId: string): Promise<UserSettings> {
   return toSettings(user);
 }
 
-export async function saveClaudeKey(userId: string, claudeApiKey: string): Promise<UserSettings> {
+export async function saveOpenAIKey(userId: string, openaiApiKey: string): Promise<UserSettings> {
   const user = await User.findById(userId);
   if (!user) throw new Error("USER_NOT_FOUND");
   const userSalt = user.encryptionSalt || undefined;
-  const encryptedKey = encrypt(claudeApiKey, userSalt);
-  const updated = await User.findByIdAndUpdate(userId, { claudeApiKey: encryptedKey }, { new: true });
+  const encryptedKey = encrypt(openaiApiKey, userSalt);
+  const updated = await User.findByIdAndUpdate(
+    userId,
+    {
+      openaiApiKey: encryptedKey,
+      claudeApiKey: "",
+    },
+    { new: true },
+  );
   if (!updated) throw new Error("USER_NOT_FOUND");
   return toSettings(updated);
 }

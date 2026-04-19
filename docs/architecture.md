@@ -2,7 +2,7 @@
 
 ## System Purpose
 
-TradeMAX is an autonomous crypto trading desktop application built on Electron. It connects to Binance or Bybit, streams live market data, runs RSI/MACD indicators, requests AI trade decisions from Claude, validates those decisions through a risk engine, and executes orders — all within a single secured desktop process. Hard safety controls (kill switch, 3-loss freeze, drawdown protection) are non-bypassable by design.
+TradeMAX is an autonomous crypto trading desktop application built on Electron. It connects to Bybit, streams live market data, runs RSI/MACD indicators, requests AI trade decisions from OpenAI, validates those decisions through a risk engine, and executes orders — all within a single secured desktop process. Hard safety controls (kill switch, 3-loss freeze, drawdown protection) are non-bypassable by design.
 
 ---
 
@@ -10,7 +10,7 @@ TradeMAX is an autonomous crypto trading desktop application built on Electron. 
 
 TradeMAX uses a strict two-process split:
 
-- **Main process** — Electron's Node.js runtime. Owns all privileged work: MongoDB connection, exchange REST/WebSocket calls, Claude API calls, authentication, encryption, risk validation, trade execution, and logging.
+- **Main process** — Electron's Node.js runtime. Owns all privileged work: MongoDB connection, exchange REST/WebSocket calls, OpenAI API calls, authentication, encryption, risk validation, trade execution, and logging.
 - **Renderer process** — React SPA running in Chromium. Stateless view layer. Communicates exclusively via IPC through the preload bridge. Has no direct access to Node APIs, the filesystem, or secrets.
 
 The preload script (`src/preload/index.ts`) is the only bridge between processes. It exposes a minimal, allowlisted `window.api` surface using `contextBridge`.
@@ -66,12 +66,12 @@ src/
       index.css
     vite-env.d.ts
   services/
-    aiService.ts       — Claude API integration, Zod validation, HOLD fallback
+    aiService.ts       — OpenAI API integration, Zod validation, HOLD fallback
     authService.ts     — Register, login, session restore, API key save
-    binanceService.ts  — Binance REST + WebSocket (HMAC-SHA256)
     bybitService.ts    — Bybit via bybit-api SDK v5
+    paperExchangeService.ts — Paper trading simulation
     encryptionService.ts — AES-256-GCM encrypt/decrypt
-    exchangeFactory.ts — Factory: returns BinanceService or BybitService
+    exchangeFactory.ts — Factory: returns BybitService or PaperExchangeService
     loggerService.ts   — MongoDB + EventEmitter log sink
     riskEngine.ts      — Trade validation against risk profile
     safetyService.ts   — Kill switch, freeze logic, drawdown tracking
@@ -152,7 +152,7 @@ Price Buffer (up to 250 bars)
 Indicators (RSI-14, MACD 12/26/9)
     │
     ▼
-AI Decision (Claude — strict JSON contract)
+AI Decision (OpenAI — strict JSON contract)
     │
     ▼
 Zod Validation (schema enforcement, HOLD fallback on failure)

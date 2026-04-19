@@ -4,19 +4,19 @@ import type { AIDecision, AIPromptData } from "../shared/types.js";
 
 export async function getVotedDecision(
   data: AIPromptData,
-  claudeApiKey: string | undefined,
+  openaiApiKey: string | undefined,
   models: string[],
   retryCount: number,
 ): Promise<AIDecision> {
   if (models.length === 0) {
-    return getAIDecision(data, claudeApiKey, undefined, retryCount);
+    return getAIDecision(data, openaiApiKey, undefined, retryCount);
   }
 
   // Query all models in parallel
   const decisions = await Promise.all(
     models.map(async (model) => {
       try {
-        return await getAIDecision(data, claudeApiKey, model, 0); // no retries for voting models
+        return await getAIDecision(data, openaiApiKey, model, 0); // no retries for voting models
       } catch {
         return null;
       }

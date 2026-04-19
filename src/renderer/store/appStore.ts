@@ -39,7 +39,7 @@ interface AppState {
   toggleTheme: () => void;
   setTheme: (theme: "dark" | "light") => void;
 
-  setPortfolio: (p: PortfolioSnapshot) => void;
+  setPortfolio: (p: PortfolioSnapshot | null) => void;
   setPositions: (p: Position[]) => void;
   addTrade: (t: Trade) => void;
   setTrades: (t: Trade[]) => void;

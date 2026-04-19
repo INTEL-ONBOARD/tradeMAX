@@ -1,11 +1,10 @@
 import { createExchangeService } from "../services/exchangeFactory.js";
-import type { BybitService } from "../services/bybitService.js";
+import type { ExchangeServiceInstance } from "../services/exchangeFactory.js";
+import type { PaperExchangeService } from "../services/paperExchangeService.js";
 import { decrypt } from "../services/encryptionService.js";
 import { getUserDoc } from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
 import type { PortfolioSnapshot, Position, MarketTick } from "../shared/types.js";
-
-type RealExchange = BybitService;
 
 type AccountCallbacks = {
   onPortfolio: (snap: PortfolioSnapshot) => void;
@@ -14,9 +13,10 @@ type AccountCallbacks = {
 };
 
 class AccountWatcher {
-  private exchange: RealExchange | null = null;
+  private exchange: ExchangeServiceInstance | null = null;
   private running = false;
   private callbacks: AccountCallbacks | null = null;
+  private positionsCache: Position[] = [];
 
   setCallbacks(cb: AccountCallbacks): void {
     this.callbacks = cb;
@@ -28,34 +28,54 @@ class AccountWatcher {
 
     try {
       const user = await getUserDoc(userId);
-
-      if (user.selectedExchange === "paper") return;
-
-      const keys = user.exchangeKeys[user.selectedExchange];
-      if (!keys.apiKey || !keys.apiSecret) return;
-
+      const isPaper = user.selectedExchange === "paper";
+      const keys = user.exchangeKeys.bybit;
       const userSalt = user.encryptionSalt || undefined;
-      const decryptedKey = decrypt(keys.apiKey, userSalt);
-      const decryptedSecret = decrypt(keys.apiSecret, userSalt);
+      const decryptedKey = isPaper || !keys.apiKey ? "" : decrypt(keys.apiKey, userSalt);
+      const decryptedSecret = isPaper || !keys.apiSecret ? "" : decrypt(keys.apiSecret, userSalt);
 
-      this.exchange = createExchangeService(user.selectedExchange) as RealExchange;
+      if (!isPaper && (!keys.apiKey || !keys.apiSecret)) return;
+
+      this.exchange = createExchangeService(user.selectedExchange);
       await this.exchange.initialize(
         { apiKey: decryptedKey, apiSecret: decryptedSecret },
         user.tradingMode,
       );
+
+      if (isPaper && "setStartingBalance" in this.exchange) {
+        (this.exchange as PaperExchangeService).setStartingBalance(
+          user.engineConfig.paperStartingBalance ?? 10000,
+        );
+      }
 
       // Fetch initial state via REST
       const portfolio = await this.exchange.getBalance();
       this.callbacks.onPortfolio(portfolio);
 
       const positions = await this.exchange.getOpenPositions();
+      this.positionsCache = positions;
       this.callbacks.onPositions(positions);
 
-      // Start real-time WebSocket streams
-      await this.exchange.startAccountStream(
-        (snap) => this.callbacks?.onPortfolio(snap),
-        (pos) => this.callbacks?.onPositions(pos),
-      );
+      if (!isPaper && "startAccountStream" in this.exchange) {
+        // Start real-time WebSocket streams for live Bybit accounts.
+        this.exchange.startAccountStream(
+          (snap) => this.callbacks?.onPortfolio(snap),
+          (delta) => {
+            // Merge delta into cache by symbol rather than replacing the whole array.
+            // Bybit sends only changed positions, so unaffected positions must be kept.
+            for (const updated of delta) {
+              const idx = this.positionsCache.findIndex((p) => p.symbol === updated.symbol);
+              if (idx !== -1) {
+                this.positionsCache[idx] = updated;
+              } else {
+                this.positionsCache.push(updated);
+              }
+            }
+            this.positionsCache = this.positionsCache.filter((p) => p.quantity > 0);
+            this.callbacks?.onPositions([...this.positionsCache]);
+          },
+        );
+      }
 
       // Start market ticker stream for live price data
       const symbol = user.engineConfig.tradingSymbol || "BTCUSDT";
@@ -83,10 +103,13 @@ class AccountWatcher {
 
   private cleanup(): void {
     if (this.exchange) {
-      this.exchange.stopAccountStream();
+      if ("stopAccountStream" in this.exchange) {
+        this.exchange.stopAccountStream();
+      }
       this.exchange.destroy();
       this.exchange = null;
     }
+    this.positionsCache = [];
     this.running = false;
   }
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { SettingsModal } from "./SettingsModal";
 import { NotificationModal } from "./NotificationModal";
+import { IPC } from "../../shared/constants";
 import { Zap, LayoutGrid, Settings, Bell, LogOut } from "./icons";
 
 interface RibbonProps {
@@ -20,8 +21,14 @@ export function SidebarRibbon({ activeView, onChangeView }: RibbonProps) {
     { id: "tools", icon: LayoutGrid },
   ];
 
-  const handleLogout = () => {
-    reset();
+  const handleLogout = async () => {
+    try {
+      await window.api.invoke(IPC.AUTH_LOGOUT);
+    } catch {
+      // Even if main-process cleanup fails, clear the renderer session so the user is not stuck.
+    } finally {
+      reset();
+    }
   };
 
   return (
