@@ -3,7 +3,7 @@ import { Modal } from "./Modal";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
 import { Settings, Shield, Edit3, Monitor, CheckCircle, Loader2 } from "./icons";
-import type { ClosedPnlRecord, PortfolioSnapshot, Position, UserSettings } from "../../shared/types";
+import type { ClosedPnlRecord, PortfolioSnapshot, Position, ProfileConfigRecord, UserSettings } from "../../shared/types";
 
 function useDebouncedCallback<T extends (...args: any[]) => any>(fn: T, delay: number): T {
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -418,6 +418,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [profileConfigs, setProfileConfigs] = useState<ProfileConfigRecord[]>([]);
+  const [profilePresetName, setProfilePresetName] = useState("");
+  const [profileActionState, setProfileActionState] = useState<"idle" | "loading" | "saving" | "applying" | "deleting">("idle");
+  const [profileActionError, setProfileActionError] = useState<string | null>(null);
 
   const showSaved = () => {
     setSaveStatus("saved");
@@ -442,7 +446,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const updateEngineConfig = async (field: string, value: string | number | boolean | string[]) => {
+  const updateEngineConfig = async (field: string, value: string | number | boolean | string[] | Record<string, string>) => {
     setSaveStatus("saving");
     try {
       const updated = await window.api.invoke(IPC.SETTINGS_UPDATE, {
@@ -457,6 +461,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const rp = settings?.riskProfile;
   const ec = settings?.engineConfig;
+  const activeProfile = ec?.tradingProfile || "intraday";
 
   const [aiModels, setAiModels] = useState<{ id: string; name: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -469,6 +474,91 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       .catch(() => {})
       .finally(() => setModelsLoading(false));
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "engine" || !ec) return;
+    if (!profilePresetName.trim()) {
+      setProfilePresetName(`${activeProfile} preset`);
+    }
+
+    setProfileActionState("loading");
+    setProfileActionError(null);
+    window.api.invoke(IPC.PROFILE_LIST, { profile: activeProfile })
+      .then((data) => setProfileConfigs((data as ProfileConfigRecord[]) ?? []))
+      .catch((err) => {
+        setProfileActionError(err instanceof Error ? err.message : "Failed to load profile presets");
+        setProfileConfigs([]);
+      })
+      .finally(() => setProfileActionState("idle"));
+  }, [activeTab, activeProfile, settings?.selectedExchange, settings?.engineConfig?.tradingProfile]);
+
+  const refreshProfileConfigs = async () => {
+    if (!ec) return;
+    setProfileActionState("loading");
+    setProfileActionError(null);
+    try {
+      const data = await window.api.invoke(IPC.PROFILE_LIST, { profile: activeProfile });
+      setProfileConfigs((data as ProfileConfigRecord[]) ?? []);
+    } catch (err) {
+      setProfileActionError(err instanceof Error ? err.message : "Failed to load profile presets");
+    } finally {
+      setProfileActionState("idle");
+    }
+  };
+
+  const handleSaveProfileConfig = async () => {
+    if (!ec) return;
+    const name = profilePresetName.trim();
+    if (!name) {
+      setProfileActionError("Preset name is required");
+      return;
+    }
+
+    setProfileActionState("saving");
+    setProfileActionError(null);
+    try {
+      await window.api.invoke(IPC.PROFILE_SAVE, {
+        name,
+        profile: activeProfile,
+        config: ec,
+      });
+      await refreshProfileConfigs();
+      setProfilePresetName(name);
+    } catch (err) {
+      setProfileActionError(err instanceof Error ? err.message : "Failed to save preset");
+    } finally {
+      setProfileActionState("idle");
+    }
+  };
+
+  const handleApplyProfileConfig = async (configId: string) => {
+    setProfileActionState("applying");
+    setProfileActionError(null);
+    try {
+      const updated = await window.api.invoke(IPC.PROFILE_APPLY, { id: configId }) as { settings: UserSettings };
+      if (updated?.settings) {
+        setSettings(updated.settings);
+      }
+      await refreshProfileConfigs();
+    } catch (err) {
+      setProfileActionError(err instanceof Error ? err.message : "Failed to apply preset");
+    } finally {
+      setProfileActionState("idle");
+    }
+  };
+
+  const handleDeleteProfileConfig = async (configId: string) => {
+    setProfileActionState("deleting");
+    setProfileActionError(null);
+    try {
+      await window.api.invoke(IPC.PROFILE_DELETE, { id: configId });
+      await refreshProfileConfigs();
+    } catch (err) {
+      setProfileActionError(err instanceof Error ? err.message : "Failed to delete preset");
+    } finally {
+      setProfileActionState("idle");
+    }
+  };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Settings" width="750px" height="500px">
@@ -646,6 +736,82 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <SettingRow label="Trading Symbol" description="The trading pair symbol (e.g. BTCUSDT)">
                     <TextInput value={ec.tradingSymbol} onChange={(v) => updateEngineConfig("tradingSymbol", v)} />
                   </SettingRow>
+                  <SettingRow label="Active Tempo Profile" description="One active profile per running agent instance">
+                    <SelectInput value={ec.tradingProfile} options={["scalp", "intraday", "swing", "custom"]} onChange={(v) => updateEngineConfig("tradingProfile", v)} />
+                  </SettingRow>
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-[13px] font-medium text-[var(--text-primary)]">Profile Presets</p>
+                        <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
+                          Save the current engine configuration and reload it later for this tempo profile.
+                        </p>
+                      </div>
+                      <div className="px-2 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-inset)] text-[10px] font-semibold tracking-wider text-[var(--text-secondary)] uppercase">
+                        {activeProfile}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <input
+                        type="text"
+                        value={profilePresetName}
+                        onChange={(e) => setProfilePresetName(e.target.value)}
+                        placeholder={`${activeProfile} preset`}
+                        className="flex-1 px-3 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+                      />
+                      <button
+                        onClick={() => void handleSaveProfileConfig()}
+                        disabled={profileActionState === "saving" || !ec}
+                        className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{
+                          background: "var(--color-info-bg)",
+                          color: "var(--color-info)",
+                          border: "1px solid var(--color-info-border)",
+                        }}
+                      >
+                        {profileActionState === "saving" ? "Saving..." : "Save Preset"}
+                      </button>
+                    </div>
+                    {profileActionError && (
+                      <p className="text-[11px] text-[var(--color-loss)] font-medium mb-2">
+                        {profileActionError}
+                      </p>
+                    )}
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {profileActionState === "loading" ? (
+                        <p className="text-[11px] text-[var(--text-tertiary)] italic">Loading saved presets...</p>
+                      ) : profileConfigs.length > 0 ? (
+                        profileConfigs.map((config) => (
+                          <div key={config._id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-inset)] px-3 py-2">
+                            <div>
+                              <p className="text-[12px] font-medium text-[var(--text-primary)]">{config.name}</p>
+                              <p className="text-[10px] text-[var(--text-tertiary)]">
+                                {new Date(config.updatedAt).toLocaleString()} · {config.profile}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => void handleApplyProfileConfig(config._id)}
+                                disabled={profileActionState === "applying" || profileActionState === "deleting" || profileActionState === "saving"}
+                                className="px-2.5 py-1 text-[10px] font-medium rounded-md border border-[var(--color-profit-border)] bg-[var(--color-profit-bg)] text-[var(--color-profit)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                Load
+                              </button>
+                              <button
+                                onClick={() => void handleDeleteProfileConfig(config._id)}
+                                disabled={profileActionState === "applying" || profileActionState === "deleting" || profileActionState === "saving"}
+                                className="px-2.5 py-1 text-[10px] font-medium rounded-md border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)] text-[var(--color-loss)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-[11px] text-[var(--text-tertiary)] italic">No saved presets for this profile yet.</p>
+                      )}
+                    </div>
+                  </div>
                   <SettingRow label="Auto Pair Selection" description="Pick the strongest pair from your watchlist before the agent starts trading">
                     <Toggle checked={ec.autoPairSelection} onChange={(v) => updateEngineConfig("autoPairSelection", v)} />
                   </SettingRow>
@@ -686,6 +852,55 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         onChange={(v) => updateEngineConfig("aiModel", v)}
                       />
                     )}
+                  </SettingRow>
+                  <SettingRow label="Market Analyst Model" description="Stage-specific model for regime and no-trade assessment">
+                    <SelectInput
+                      value={ec.stageModels.marketAnalyst}
+                      options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.marketAnalyst]}
+                      onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, marketAnalyst: v } as any)}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Trade Architect Model" description="Stage-specific model for trade design and sizing">
+                    <SelectInput
+                      value={ec.stageModels.tradeArchitect}
+                      options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.tradeArchitect]}
+                      onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, tradeArchitect: v } as any)}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Execution Critic Model" description="Stage-specific model for approval or HOLD conversion">
+                    <SelectInput
+                      value={ec.stageModels.executionCritic}
+                      options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.executionCritic]}
+                      onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, executionCritic: v } as any)}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Reviewer Model" description="Stage-specific model for post-trade review memory">
+                    <SelectInput
+                      value={ec.stageModels.postTradeReviewer}
+                      options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.postTradeReviewer]}
+                      onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, postTradeReviewer: v } as any)}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Memory Retrieval Count" description="How many local cases to retrieve into each cycle">
+                    <NumberInput value={ec.memoryRetrievalCount} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("memoryRetrievalCount", Math.round(v))} />
+                  </SettingRow>
+                  <SettingRow label="Memory Lookback Days" description="How far back local memory retrieval searches">
+                    <NumberInput value={ec.memoryLookbackDays} min={1} max={365} step={1} onChange={(v) => updateEngineConfig("memoryLookbackDays", Math.round(v))} />
+                  </SettingRow>
+                  <SettingRow label="Critique Strictness" description="How aggressively the execution critic downgrades trades">
+                    <SelectInput value={ec.critiqueStrictness} options={["low", "balanced", "high"]} onChange={(v) => updateEngineConfig("critiqueStrictness", v)} />
+                  </SettingRow>
+                  <SettingRow label="Hold-Time Bias" description="Bias the agent toward shorter or longer trade duration">
+                    <SelectInput value={ec.holdTimeBias} options={["shorter", "balanced", "longer"]} onChange={(v) => updateEngineConfig("holdTimeBias", v)} />
+                  </SettingRow>
+                  <SettingRow label="Exit Style Preference" description="Bias the architect toward fixed, trailing, or hybrid exits">
+                    <SelectInput value={ec.exitStylePreference} options={["fixed", "trailing", "hybrid", "balanced"]} onChange={(v) => updateEngineConfig("exitStylePreference", v)} />
+                  </SettingRow>
+                  <SettingRow label="Review Mode" description="Run the post-trade reviewer and idle self-review to update local memory">
+                    <Toggle checked={ec.reviewModeEnabled} onChange={(v) => updateEngineConfig("reviewModeEnabled", v)} />
+                  </SettingRow>
+                  <SettingRow label="Shadow Mode" description="Run the full staged pipeline live without sending orders">
+                    <Toggle checked={ec.shadowModeEnabled} onChange={(v) => updateEngineConfig("shadowModeEnabled", v)} />
                   </SettingRow>
                   <SettingRow label="Enable Multi-Model Voting" description="Use multiple AI models and aggregate their signals">
                     <Toggle checked={ec.enableMultiModelVoting} onChange={(v) => updateEngineConfig("enableMultiModelVoting", v)} />

@@ -7,5 +7,6 @@
     "moduleResolution": "node",
     "types": ["node"]
   },
-  "include": ["src/preload/**/*", "src/shared/**/*"]
+  "include": ["src/preload/**/*", "src/shared/**/*"],
+  "exclude": ["**/__tests__/**", "**/*.test.ts", "src/**/__tests__/**", "src/**/*.test.ts"]
 }

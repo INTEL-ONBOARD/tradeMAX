@@ -22,12 +22,26 @@ export interface IUser extends Document {
   engineConfig: {
     tradingSymbol: string;
     autoPairSelection: boolean;
+    tradingProfile: "scalp" | "intraday" | "swing" | "custom";
     loopIntervalSec: number;
     candleTimeframe: "1m" | "5m" | "15m";
     maxSlippagePct: number;
     tradeCooldownSec: number;
     aiRetryCount: number;
     aiModel: string;
+    stageModels: {
+      marketAnalyst: string;
+      tradeArchitect: string;
+      executionCritic: string;
+      postTradeReviewer: string;
+    };
+    memoryRetrievalCount: number;
+    memoryLookbackDays: number;
+    critiqueStrictness: "low" | "balanced" | "high";
+    holdTimeBias: "shorter" | "balanced" | "longer";
+    exitStylePreference: "fixed" | "trailing" | "hybrid" | "balanced";
+    reviewModeEnabled: boolean;
+    shadowModeEnabled: boolean;
     maxConsecutiveLosses: number;
     maxDrawdownPct: number;
     volatilityThresholdPct: number;
@@ -77,12 +91,26 @@ const userSchema = new Schema<IUser>(
     engineConfig: {
       tradingSymbol: { type: String, default: "BTCUSDT" },
       autoPairSelection: { type: Boolean, default: false },
+      tradingProfile: { type: String, enum: ["scalp", "intraday", "swing", "custom"], default: "intraday" },
       loopIntervalSec: { type: Number, default: 8 },
       candleTimeframe: { type: String, enum: ["1m", "5m", "15m"], default: "1m" },
       maxSlippagePct: { type: Number, default: 0.5 },
       tradeCooldownSec: { type: Number, default: 30 },
       aiRetryCount: { type: Number, default: 2 },
       aiModel: { type: String, default: "gpt-5.4-mini" },
+      stageModels: {
+        marketAnalyst: { type: String, default: "gpt-5.4-mini" },
+        tradeArchitect: { type: String, default: "gpt-5.4-mini" },
+        executionCritic: { type: String, default: "gpt-5.4-mini" },
+        postTradeReviewer: { type: String, default: "gpt-5.4-mini" },
+      },
+      memoryRetrievalCount: { type: Number, default: 5 },
+      memoryLookbackDays: { type: Number, default: 45 },
+      critiqueStrictness: { type: String, enum: ["low", "balanced", "high"], default: "balanced" },
+      holdTimeBias: { type: String, enum: ["shorter", "balanced", "longer"], default: "balanced" },
+      exitStylePreference: { type: String, enum: ["fixed", "trailing", "hybrid", "balanced"], default: "balanced" },
+      reviewModeEnabled: { type: Boolean, default: true },
+      shadowModeEnabled: { type: Boolean, default: false },
       maxConsecutiveLosses: { type: Number, default: 3 },
       maxDrawdownPct: { type: Number, default: 15 },
       volatilityThresholdPct: { type: Number, default: 5 },

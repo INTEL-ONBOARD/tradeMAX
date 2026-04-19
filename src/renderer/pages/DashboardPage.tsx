@@ -9,11 +9,11 @@ import { PortfolioPanel } from "../components/PortfolioPanel";
 import { PortfolioModalContent } from "../components/PortfolioModalContent";
 import { LiveLogPanel } from "../components/LiveLogPanel";
 import { BacktestResultsModal } from "../components/BacktestResultsModal";
-import { BacktestRunnerModal, type BacktestRunInput } from "../components/BacktestRunnerModal";
+import { BacktestRunnerModal } from "../components/BacktestRunnerModal";
 import { Modal } from "../components/Modal";
 import { Activity, BarChart3, LayoutGrid, Terminal, Wallet } from "../components/icons";
 import { IPC, STREAM } from "../../shared/constants";
-import type { BacktestResult } from "../../shared/types";
+import type { BacktestResult, BacktestRunInput } from "../../shared/types";
 
 type ToolPanel = "portfolio" | "ai-signal" | "market-scan" | "terminal" | null;
 

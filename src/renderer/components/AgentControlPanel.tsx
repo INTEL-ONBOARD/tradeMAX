@@ -14,6 +14,7 @@ export function AgentControlPanel() {
   const settings = useAppStore((s) => s.settings);
   const symbol = settings?.engineConfig?.tradingSymbol || "BTCUSDT";
   const autoPair = settings?.engineConfig?.autoPairSelection || false;
+  const profile = settings?.engineConfig?.tradingProfile || "intraday";
   const activeSymbol = autoPair ? (marketTick?.symbol || symbol) : symbol;
 
   const handleToggleAgent = async () => {
@@ -71,6 +72,9 @@ export function AgentControlPanel() {
       <div className="flex items-center gap-2 mb-6">
         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--bg-inset)] text-[var(--text-secondary)] border border-[var(--border)]">
           {autoPair ? `AUTO ${activeSymbol}` : activeSymbol}
+        </span>
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--bg-inset)] text-[var(--text-secondary)] border border-[var(--border)]">
+          {profile.toUpperCase()}
         </span>
         <button
           onClick={() => setConfigOpen(true)}

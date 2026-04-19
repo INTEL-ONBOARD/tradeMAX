@@ -171,10 +171,8 @@ Behavior:
 Files:
 
 - `src/services/tradeEngine.ts`
-- `src/services/candleAggregator.ts`
-- `src/services/aiService.ts`
-- `src/services/votingService.ts`
-- `src/services/riskEngine.ts`
+- `src/services/aiPipelineService.ts`
+- `src/services/marketSnapshotService.ts`
 - `src/services/safetyService.ts`
 
 Purpose:
@@ -183,24 +181,20 @@ Purpose:
 
 Behavior:
 
-1. load user settings and decrypt required keys
-2. initialize selected exchange service
-3. start ticker stream and feed ticks into a candle aggregator
-4. every loop interval:
-5. verify safety state
-6. ensure enough candles exist
-7. compute indicators
-8. fetch balance and positions
-9. enforce drawdown and API-failure safety rules
-10. close existing trades on SL/TP or trailing stop
-11. gather AI prompt context
-12. request an OpenAI decision or run multi-model voting
-13. reject malformed or unreasonable AI output
-14. calculate volatility, spread, and position sizing
-15. run the rule-based risk engine
-16. place the order if approved
-17. persist the trade
-18. emit updates and notifications
+- load user settings and decrypt required keys
+- initialize the selected exchange service
+- stream live ticks and maintain the latest market price
+- build a normalized market snapshot each cycle
+- run the staged AI pipeline:
+  - Market Analyst
+  - Trade Architect
+  - Execution Critic
+  - Post-Trade Reviewer
+- run idle/operator-triggered self-review passes when review mode is enabled and local history has new signal
+- enforce only emergency floors in code
+- place the order when the pipeline returns a contract-valid, exchange-safe trade
+- persist the cycle, trade, review, and self-review artifacts locally
+- emit updates and notifications
 
 ### Risk engine
 
@@ -255,15 +249,16 @@ Files:
 Behavior:
 
 - fetch historical Bybit candles over REST
-- compute indicators on sliding windows
-- call OpenAI periodically for decisions
-- simulate simplified entries and exits
+- build the same normalized snapshot schema used live
+- replay the staged AI pipeline with profile-aware context windows
+- support standard replay and walk-forward sweeps
 - emit progress updates over IPC
 
 Current product state:
 
 - backend support exists
 - renderer now includes a launch workflow, progress UI, and results modal in the dashboard tools view
+- renderer settings now include saved profile presets for tempo-specific engine configs
 
 ## 5. Exchange Layer
 
@@ -342,14 +337,58 @@ Stores:
 - risk result snapshot
 - timestamps
 
+### Decision journal
+
+File:
+
+- `src/db/models/DecisionJournal.ts`
+
+Stores:
+
+- symbol, tempo profile, regime, and volatility bucket
+- full staged AI pipeline payload
+- execution result metadata
+- post-trade review payload
+- local references to the associated market snapshot
+
+### Market snapshot
+
+File:
+
+- `src/db/models/MarketSnapshot.ts`
+
+Stores:
+
+- normalized market snapshot payload
+- symbol and tempo profile
+- local timestamp for replay and memory retrieval
+
+### Memory note
+
+File:
+
+- `src/db/models/MemoryNote.ts`
+
+Stores:
+
+- short local lessons and heuristics from post-trade review
+- tags for regime, volatility, and outcome
+- priority for retrieval ranking
+
+### Profile config
+
+File:
+
+- `src/db/models/ProfileConfig.ts`
+
+Stores:
+
+- named local presets for tempo/profile-specific configuration
+- serialized profile config payload
+- user-owned profile metadata
+
 ### Log
 
 File:
 
 - `src/db/models/Log.ts`
-]===]
-
-['
-
-
-hhk]

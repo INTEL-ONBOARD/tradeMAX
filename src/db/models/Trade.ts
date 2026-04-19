@@ -15,6 +15,8 @@ export interface ITrade extends Document {
   mode: "spot" | "futures";
   aiDecision: Record<string, unknown> | null;
   riskCheck: Record<string, unknown> | null;
+  pipelineRun: Record<string, unknown> | null;
+  memoryReferences: string[];
   createdAt: Date;
   closedAt: Date | null;
 }
@@ -35,6 +37,8 @@ const tradeSchema = new Schema<ITrade>(
     mode: { type: String, enum: ["spot", "futures"], required: true },
     aiDecision: { type: Schema.Types.Mixed, default: null },
     riskCheck: { type: Schema.Types.Mixed, default: null },
+    pipelineRun: { type: Schema.Types.Mixed, default: null },
+    memoryReferences: { type: [String], default: [] },
     closedAt: { type: Date, default: null },
   },
   { timestamps: true }

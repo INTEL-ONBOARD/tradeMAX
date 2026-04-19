@@ -11,6 +11,10 @@ export class BybitService {
   private apiSecret = "";
 
   async initialize(keys: ExchangeKeys, mode: "spot" | "futures"): Promise<void> {
+    if (!keys.apiKey || !keys.apiSecret) {
+      throw new Error("Missing Bybit API credentials");
+    }
+
     this.apiKey = keys.apiKey;
     this.apiSecret = keys.apiSecret;
     this.mode = mode;

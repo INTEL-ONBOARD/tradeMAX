@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Modal } from "./Modal";
 import type { BacktestResult } from "../../shared/types";
 
@@ -24,6 +24,14 @@ function fmt(n: number, decimals = 2): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
+function fmtPct(n: number, decimals = 1): string {
+  return `${fmt(n, decimals)}%`;
+}
+
+function fmtSignedMoney(n: number): string {
+  return `${n >= 0 ? "+" : "-"}$${fmt(Math.abs(n))}`;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -35,6 +43,24 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
     <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]">
       <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">{label}</span>
       <span className="text-sm font-bold font-mono" style={{ color: color ?? "var(--text-primary)" }}>{value}</span>
+    </div>
+  );
+}
+
+function Section({ title, children, subtitle }: { title: string; subtitle?: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] overflow-hidden">
+      <div className="px-3 py-2 border-b border-[var(--border)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">{title}</p>
+            {subtitle && <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">{subtitle}</p>}
+          </div>
+        </div>
+      </div>
+      <div className="p-3">
+        {children}
+      </div>
     </div>
   );
 }
@@ -73,25 +99,148 @@ export function BacktestResultsModal({ isOpen, onClose, result }: Props) {
   const chartColor = isProfitable ? "var(--color-profit)" : "var(--color-loss)";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Backtest: ${result.symbol} - ${result.period}`} width="720px" height="640px">
+    <Modal isOpen={isOpen} onClose={onClose} title={`Backtest: ${result.symbol} - ${result.period}`} width="780px" height="720px">
       <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
-        {/* Summary stats */}
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <StatBox label="Starting" value={`$${fmt(result.startingBalance)}`} />
           <StatBox label="Final" value={`$${fmt(result.finalBalance)}`} color={pnlColor} />
-          <StatBox label="Total PnL" value={`${isProfitable ? "+" : ""}$${fmt(result.totalPnl)}`} color={pnlColor} />
-          <StatBox label="Win Rate" value={`${fmt(result.winRate, 1)}%`} color={result.winRate >= 50 ? "var(--color-profit)" : "var(--color-loss)"} />
+          <StatBox label="Total PnL" value={fmtSignedMoney(result.totalPnl)} color={pnlColor} />
+          <StatBox label="Win Rate" value={fmtPct(result.winRate)} color={result.winRate >= 50 ? "var(--color-profit)" : "var(--color-loss)"} />
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <StatBox label="Sharpe Ratio" value={fmt(result.sharpeRatio)} />
-          <StatBox label="Max Drawdown" value={`${fmt(result.maxDrawdown, 1)}%`} color="var(--color-loss)" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <StatBox label="Sharpe" value={fmt(result.sharpeRatio)} />
+          <StatBox label="Sortino" value={fmt(result.sortinoRatio)} />
           <StatBox label="Profit Factor" value={fmt(result.profitFactor)} color={result.profitFactor >= 1 ? "var(--color-profit)" : "var(--color-loss)"} />
+          <StatBox label="Max Drawdown" value={fmtPct(result.maxDrawdown)} color="var(--color-loss)" />
         </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <StatBox label="Expectancy" value={fmtSignedMoney(result.expectancy)} />
+          <StatBox label="Avg Adverse Exc." value={fmtPct(result.averageAdverseExcursion)} />
+          <StatBox label="AI Rejection" value={fmtPct(result.aiRejectionRate)} />
+          <StatBox label="Avg Latency" value={`${fmt(result.averageLatencyMs, 0)} ms`} />
+        </div>
+
+        {result.walkForward && (
+          <Section
+            title="Walk-Forward Sweep"
+            subtitle={result.walkForward.bestProfileReason}
+          >
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="text-[11px] text-[var(--text-secondary)]">
+                Best profile: <span className="font-semibold text-[var(--text-primary)]">{result.walkForward.bestProfile}</span>
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
+                {result.walkForward.sweepProfiles.join(" / ")}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto mb-3">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[var(--text-tertiary)] text-[10px] uppercase border-b border-[var(--border)]">
+                    <th className="px-3 py-2 text-left font-medium">Profile</th>
+                    <th className="px-3 py-2 text-right font-medium">Trades</th>
+                    <th className="px-3 py-2 text-right font-medium">PnL</th>
+                    <th className="px-3 py-2 text-right font-medium">PF</th>
+                    <th className="px-3 py-2 text-right font-medium">DD</th>
+                    <th className="px-3 py-2 text-right font-medium">Sharpe</th>
+                    <th className="px-3 py-2 text-right font-medium">Sortino</th>
+                    <th className="px-3 py-2 text-right font-medium">Rej%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.walkForward.profileResults.map((row) => (
+                    <tr key={row.profile} className="border-b border-[var(--border)] last:border-b-0">
+                      <td className="px-3 py-1.5 font-medium text-[var(--text-primary)]">{row.profile}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{row.totalTrades}</td>
+                      <td className={`px-3 py-1.5 text-right font-mono font-bold ${row.totalPnl >= 0 ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"}`}>
+                        {fmtSignedMoney(row.totalPnl)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmt(row.profitFactor)}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmtPct(row.maxDrawdown)}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmt(row.sharpeRatio)}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmt(row.sortinoRatio)}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmtPct(row.aiRejectionRate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="overflow-x-auto max-h-[220px]">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[var(--text-tertiary)] text-[10px] uppercase border-b border-[var(--border)]">
+                    <th className="px-3 py-2 text-left font-medium">Profile</th>
+                    <th className="px-3 py-2 text-right font-medium">Fold</th>
+                    <th className="px-3 py-2 text-left font-medium">Train</th>
+                    <th className="px-3 py-2 text-left font-medium">Test</th>
+                    <th className="px-3 py-2 text-right font-medium">Trades</th>
+                    <th className="px-3 py-2 text-right font-medium">PnL</th>
+                    <th className="px-3 py-2 text-right font-medium">PF</th>
+                    <th className="px-3 py-2 text-right font-medium">DD</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.walkForward.folds.map((fold, index) => (
+                    <tr key={`${fold.profile}-${fold.fold}-${index}`} className="border-b border-[var(--border)] last:border-b-0">
+                      <td className="px-3 py-1.5 font-medium text-[var(--text-primary)]">{fold.profile}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fold.fold}</td>
+                      <td className="px-3 py-1.5 text-[var(--text-tertiary)] whitespace-nowrap">{fold.trainPeriod}</td>
+                      <td className="px-3 py-1.5 text-[var(--text-tertiary)] whitespace-nowrap">{fold.testPeriod}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fold.totalTrades}</td>
+                      <td className={`px-3 py-1.5 text-right font-mono font-bold ${fold.totalPnl >= 0 ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"}`}>
+                        {fmtSignedMoney(fold.totalPnl)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmt(fold.profitFactor)}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmtPct(fold.maxDrawdown)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        )}
+
+        <Section title="Regime Breakdown" subtitle="Performance by market regime from the replay snapshots">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[var(--text-tertiary)] text-[10px] uppercase border-b border-[var(--border)]">
+                  <th className="px-3 py-2 text-left font-medium">Regime</th>
+                  <th className="px-3 py-2 text-right font-medium">Trades</th>
+                  <th className="px-3 py-2 text-right font-medium">Win Rate</th>
+                  <th className="px-3 py-2 text-right font-medium">PnL</th>
+                  <th className="px-3 py-2 text-right font-medium">PF</th>
+                  <th className="px-3 py-2 text-right font-medium">Latency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.regimeBreakdown.map((row) => (
+                  <tr key={row.regime} className="border-b border-[var(--border)] last:border-b-0">
+                    <td className="px-3 py-1.5 font-medium text-[var(--text-primary)]">{row.regime.replace(/_/g, " ")}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{row.trades}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmtPct(row.winRate)}</td>
+                    <td className={`px-3 py-1.5 text-right font-mono font-bold ${row.totalPnl >= 0 ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"}`}>
+                      {fmtSignedMoney(row.totalPnl)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmt(row.profitFactor)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">{fmt(row.averageLatencyMs, 0)} ms</td>
+                  </tr>
+                ))}
+                {result.regimeBreakdown.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-4 text-center text-[var(--text-tertiary)]">No regime breakdown available</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Section>
 
         {/* Equity curve */}
         {equityPoints.length >= 2 && (
-          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
-            <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] mb-2">Equity Curve</p>
+          <Section title="Equity Curve" subtitle="Cumulative equity across closed trades">
             <svg width="100%" height="140" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="overflow-visible">
               <defs>
                 <linearGradient id="btGrad" x1="0" y1="0" x2="0" y2="1">
@@ -105,7 +254,7 @@ export function BacktestResultsModal({ isOpen, onClose, result }: Props) {
               <path d={areaPath} fill="url(#btGrad)" />
               <path d={linePath} fill="none" stroke={chartColor} strokeWidth="2" strokeLinecap="round" />
             </svg>
-          </div>
+          </Section>
         )}
 
         {/* Trade list */}
@@ -134,7 +283,7 @@ export function BacktestResultsModal({ isOpen, onClose, result }: Props) {
                     <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">${fmt(t.entryPrice)}</td>
                     <td className="px-3 py-1.5 text-right font-mono text-[var(--text-secondary)]">${fmt(t.exitPrice)}</td>
                     <td className={`px-3 py-1.5 text-right font-mono font-bold ${t.pnl >= 0 ? "text-[var(--color-profit)]" : "text-[var(--color-loss)]"}`}>
-                      {t.pnl >= 0 ? "+" : ""}${fmt(t.pnl)}
+                      {fmtSignedMoney(t.pnl)}
                     </td>
                     <td className="px-3 py-1.5 text-[var(--text-tertiary)]">{t.reason.replace("_", " ")}</td>
                     <td className="px-3 py-1.5 text-[var(--text-tertiary)]">{new Date(t.entryTime).toLocaleDateString()}</td>

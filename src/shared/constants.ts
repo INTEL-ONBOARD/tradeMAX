@@ -18,6 +18,12 @@ export const IPC = {
 
   AI_LAST_DECISION: "ai:last-decision",
   AI_LIST_MODELS: "ai:list-models",
+  AI_SELF_REVIEW: "ai:self-review",
+
+  PROFILE_LIST: "profile:list",
+  PROFILE_SAVE: "profile:save",
+  PROFILE_APPLY: "profile:apply",
+  PROFILE_DELETE: "profile:delete",
 
   AGENT_START: "agent:start",
   AGENT_STOP: "agent:stop",
@@ -61,7 +67,8 @@ export const ENGINE = {
   MACD_FAST: 12,
   MACD_SLOW: 26,
   MACD_SIGNAL: 9,
-  AI_TIMEOUT_MS: 30000,
+  AI_TIMEOUT_MS: 8000,
+  AI_STAGE_TIMEOUT_MS: 2500,
   EXCHANGE_RETRY_COUNT: 3,
   DAILY_PNL_CACHE_CYCLES: 15,
 } as const;
@@ -70,12 +77,26 @@ export const ENGINE = {
 export const ENGINE_DEFAULTS = {
   tradingSymbol: "BTCUSDT",
   autoPairSelection: false,
+  tradingProfile: "intraday" as const,
   loopIntervalSec: 8,
   candleTimeframe: "1m" as const,
   maxSlippagePct: 0.5,
   tradeCooldownSec: 30,
   aiRetryCount: 2,
   aiModel: "gpt-5.4-mini",
+  stageModels: {
+    marketAnalyst: "gpt-5.4-mini",
+    tradeArchitect: "gpt-5.4-mini",
+    executionCritic: "gpt-5.4-mini",
+    postTradeReviewer: "gpt-5.4-mini",
+  },
+  memoryRetrievalCount: 5,
+  memoryLookbackDays: 45,
+  critiqueStrictness: "balanced" as const,
+  holdTimeBias: "balanced" as const,
+  exitStylePreference: "balanced" as const,
+  reviewModeEnabled: true,
+  shadowModeEnabled: false,
   maxConsecutiveLosses: 3,
   maxDrawdownPct: 15,
   volatilityThresholdPct: 5,
@@ -92,6 +113,37 @@ export const ENGINE_DEFAULTS = {
   watchlist: [] as readonly string[],
   enableMultiModelVoting: false,
   votingModels: ["gpt-5.4-mini", "gpt-5.4-nano"] as readonly string[],
+} as const;
+
+export const TRADING_PROFILE_DEFAULTS = {
+  scalp: {
+    loopIntervalSec: 4,
+    timeframes: ["1m", "5m"],
+    memoryHorizonHours: 24,
+    maxHoldMinutes: 45,
+    critiqueStrictness: "high",
+  },
+  intraday: {
+    loopIntervalSec: 12,
+    timeframes: ["5m", "15m", "1h"],
+    memoryHorizonHours: 96,
+    maxHoldMinutes: 480,
+    critiqueStrictness: "balanced",
+  },
+  swing: {
+    loopIntervalSec: 60,
+    timeframes: ["15m", "1h", "4h"],
+    memoryHorizonHours: 336,
+    maxHoldMinutes: 4320,
+    critiqueStrictness: "balanced",
+  },
+  custom: {
+    loopIntervalSec: 15,
+    timeframes: ["1m", "5m", "15m"],
+    memoryHorizonHours: 168,
+    maxHoldMinutes: 720,
+    critiqueStrictness: "balanced",
+  },
 } as const;
 
 // ─── Allowed IPC Channels (for preload whitelist) ──────

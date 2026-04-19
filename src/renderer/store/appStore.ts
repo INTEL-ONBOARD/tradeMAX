@@ -6,7 +6,7 @@ import type {
   PortfolioSnapshot,
   Position,
   Trade,
-  AIDecision,
+  AgentCycleResult,
   AgentStatus,
   LogEntry,
   MarketTick,
@@ -26,7 +26,7 @@ interface AppState {
   positions: Position[];
   trades: Trade[];
   exchangeHistory: ClosedPnlRecord[];
-  lastAIDecision: AIDecision | null;
+  lastAIDecision: AgentCycleResult | null;
   agentStatus: AgentStatus;
   logs: LogEntry[];
   marketTick: MarketTick | null;
@@ -44,7 +44,7 @@ interface AppState {
   addTrade: (t: Trade) => void;
   setTrades: (t: Trade[]) => void;
   setExchangeHistory: (h: ClosedPnlRecord[]) => void;
-  setLastAIDecision: (d: AIDecision) => void;
+  setLastAIDecision: (d: AgentCycleResult) => void;
   setAgentStatus: (s: AgentStatus) => void;
   addLog: (l: LogEntry) => void;
   setLogs: (l: LogEntry[]) => void;

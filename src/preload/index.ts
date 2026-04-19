@@ -6,6 +6,8 @@ const ALLOWED_INVOKE_CHANNELS = [
   "settings:save-api-keys", "settings:save-openai-key", "settings:get", "settings:update",
   "portfolio:get", "positions:get", "position:close", "trades:history", "exchange:closed-pnl",
   "ai:last-decision", "ai:list-models",
+  "ai:self-review",
+  "profile:list", "profile:save", "profile:apply", "profile:delete",
   "agent:start", "agent:stop", "agent:kill-switch", "agent:reset-freeze",
   "logs:recent",
   "exchange:pairs",

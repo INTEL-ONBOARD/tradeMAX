@@ -1,6 +1,15 @@
 import { ipcMain, Notification, type BrowserWindow } from "electron";
 import { IPC, STREAM } from "../shared/constants.js";
-import { apiKeysSchema, openaiKeySchema, settingsUpdateSchema, agentStartSchema, closePositionSchema } from "../shared/validators.js";
+import {
+  apiKeysSchema,
+  openaiKeySchema,
+  settingsUpdateSchema,
+  agentStartSchema,
+  closePositionSchema,
+  selfReviewRequestSchema,
+  profileConfigSaveSchema,
+  profileConfigIdSchema,
+} from "../shared/validators.js";
 import * as auth from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
 import { tradeEngine } from "../services/tradeEngine.js";
@@ -14,6 +23,14 @@ import { decrypt, clearKeyCache } from "../services/encryptionService.js";
 import { mapExchangeError } from "./exchangeErrors.js";
 import { accountWatcher } from "./accountWatcher.js";
 import { runBacktest } from "../services/backtestService.js";
+import { runSelfReview } from "../services/aiPipelineService.js";
+import {
+  applyProfileConfig,
+  deleteProfileConfig,
+  listProfileConfigs,
+  saveProfileConfig,
+} from "../services/profileConfigService.js";
+import type { BacktestRunInput } from "../shared/types.js";
 
 let currentUserId: string | null = null;
 
@@ -337,6 +354,8 @@ export function registerIpcHandlers(): void {
           mode: openTrade.mode as "spot" | "futures",
           aiDecision: openTrade.aiDecision,
           riskCheck: openTrade.riskCheck,
+          pipelineRun: openTrade.pipelineRun ?? null,
+          memoryReferences: openTrade.memoryReferences ?? [],
           createdAt: openTrade.createdAt.toISOString(),
           closedAt: openTrade.closedAt.toISOString(),
         });
@@ -423,6 +442,8 @@ export function registerIpcHandlers(): void {
       mode: t.mode,
       aiDecision: t.aiDecision,
       riskCheck: t.riskCheck,
+      pipelineRun: t.pipelineRun ?? null,
+      memoryReferences: t.memoryReferences ?? [],
       createdAt: t.createdAt.toISOString(),
       closedAt: t.closedAt?.toISOString() ?? null,
     }));
@@ -452,6 +473,80 @@ export function registerIpcHandlers(): void {
       .map((m) => ({ id: m.id, name: m.id }))
       .filter((m) => m.id.startsWith("gpt-"))
       .sort((a, b) => a.id.localeCompare(b.id));
+  });
+
+  ipcMain.handle(IPC.AI_SELF_REVIEW, async (_e, data) => {
+    if (!currentUserId) throw new Error("Not authenticated");
+    const parsed = selfReviewRequestSchema.parse(data ?? {});
+    const user = await auth.getUserDoc(currentUserId);
+    const encryptedAIKey = user.openaiApiKey || user.claudeApiKey;
+    const userSalt = user.encryptionSalt || undefined;
+    const openaiApiKey = encryptedAIKey ? decrypt(encryptedAIKey, userSalt) : undefined;
+    const activeSymbol = tradeEngine.isRunning()
+      ? tradeEngine.getSymbol()
+      : (user.engineConfig.tradingSymbol || "BTCUSDT");
+
+    const result = await runSelfReview({
+      userId: currentUserId,
+      symbol: activeSymbol,
+      engineConfig: user.engineConfig,
+      openaiApiKey,
+      force: parsed.force ?? false,
+    });
+
+    if (result) {
+      send(STREAM.NOTIFICATION, {
+        id: result.reviewId,
+        type: "ai",
+        title: "Self review complete",
+        message: result.summary,
+        read: false,
+        timestamp: result.createdAt,
+      });
+      await logger.info("AI", `Self review complete for ${result.symbol}`, {
+        reviewId: result.reviewId,
+        reviewedTradeCount: result.reviewedTradeCount,
+        reviewedJournalCount: result.reviewedJournalCount,
+      });
+    }
+
+    return result;
+  });
+
+  // ─── Profile Presets ────────────────────────────────
+  ipcMain.handle(IPC.PROFILE_LIST, async (_e, data) => {
+    if (!currentUserId) throw new Error("Not authenticated");
+    const profile = (data as { profile?: "scalp" | "intraday" | "swing" | "custom" } | undefined)?.profile;
+    return listProfileConfigs(currentUserId, profile);
+  });
+
+  ipcMain.handle(IPC.PROFILE_SAVE, async (_e, data) => {
+    if (!currentUserId) throw new Error("Not authenticated");
+    const parsed = profileConfigSaveSchema.parse(data);
+    return saveProfileConfig({
+      userId: currentUserId,
+      name: parsed.name,
+      profile: parsed.profile,
+      config: parsed.config,
+    });
+  });
+
+  ipcMain.handle(IPC.PROFILE_APPLY, async (_e, data) => {
+    if (!currentUserId) throw new Error("Not authenticated");
+    const parsed = profileConfigIdSchema.parse(data);
+    return applyProfileConfig({
+      userId: currentUserId,
+      profileConfigId: parsed.id,
+    });
+  });
+
+  ipcMain.handle(IPC.PROFILE_DELETE, async (_e, data) => {
+    if (!currentUserId) throw new Error("Not authenticated");
+    const parsed = profileConfigIdSchema.parse(data);
+    return deleteProfileConfig({
+      userId: currentUserId,
+      profileConfigId: parsed.id,
+    });
   });
 
   // ─── Agent Control ───────────────────────────────────
@@ -561,12 +656,7 @@ export function registerIpcHandlers(): void {
     if (!currentUserId) throw new Error("Not authenticated");
 
     const user = await auth.getUserDoc(currentUserId);
-    const config = data as {
-      symbol: string;
-      startDate: string;
-      endDate: string;
-      startingBalance: number;
-    };
+    const config = data as BacktestRunInput;
 
     const userSalt = user.encryptionSalt || undefined;
     const encryptedAIKey = user.openaiApiKey || user.claudeApiKey;
@@ -574,12 +664,14 @@ export function registerIpcHandlers(): void {
 
     const result = await runBacktest(
       {
+        userId: currentUserId,
         symbol: config.symbol,
         exchange: "bybit",
         mode: user.tradingMode,
         startDate: config.startDate,
         endDate: config.endDate,
         startingBalance: config.startingBalance,
+        walkForwardSweep: config.walkForwardSweep ?? false,
         riskProfile: user.riskProfile,
         engineConfig: user.engineConfig,
         openaiApiKey,

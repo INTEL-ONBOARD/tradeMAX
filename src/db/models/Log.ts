@@ -15,7 +15,7 @@ const logSchema = new Schema<ILog>({
   category: { type: String, enum: ["AUTH", "TRADE", "AI", "RISK", "SAFETY", "SYSTEM"], required: true },
   message: { type: String, required: true },
   meta: { type: Schema.Types.Mixed, default: {} },
-  timestamp: { type: Date, default: Date.now, index: true },
+  timestamp: { type: Date, default: Date.now },
 });
 
 logSchema.index({ timestamp: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }); // 30 days

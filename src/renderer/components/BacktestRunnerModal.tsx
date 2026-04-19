@@ -3,13 +3,7 @@ import { Modal } from "./Modal";
 import { Loader2 } from "./icons";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
-
-export interface BacktestRunInput {
-  symbol: string;
-  startDate: string;
-  endDate: string;
-  startingBalance: number;
-}
+import type { BacktestRunInput } from "../../shared/types";
 
 interface BacktestProgressState {
   current: number;
@@ -44,6 +38,7 @@ export function BacktestRunnerModal({
   const [startDate, setStartDate] = useState(isoDate(-30));
   const [endDate, setEndDate] = useState(isoDate(0));
   const [startingBalance, setStartingBalance] = useState(10000);
+  const [walkForwardSweep, setWalkForwardSweep] = useState(false);
   const [pairs, setPairs] = useState<string[]>([]);
   const [pairsLoading, setPairsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +48,7 @@ export function BacktestRunnerModal({
 
     setSymbol(settings.engineConfig?.tradingSymbol || "BTCUSDT");
     setStartingBalance(settings.engineConfig?.paperStartingBalance || 10000);
+    setWalkForwardSweep(false);
     setError(null);
 
     setPairsLoading(true);
@@ -94,6 +90,7 @@ export function BacktestRunnerModal({
         startDate,
         endDate,
         startingBalance,
+        walkForwardSweep,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Backtest failed";
@@ -179,6 +176,21 @@ export function BacktestRunnerModal({
             Runs the current AI model and risk profile against historical Bybit candles. Use this before switching strategies or raising leverage.
           </p>
         </div>
+
+        <label className="flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={walkForwardSweep}
+            onChange={(e) => setWalkForwardSweep(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-[var(--border)] bg-[var(--bg-inset)] text-[var(--color-info)] focus:ring-0"
+          />
+          <div className="flex flex-col gap-1">
+            <span className="text-[12px] font-medium text-[var(--text-primary)]">Walk-forward sweep</span>
+            <span className="text-[11px] text-[var(--text-secondary)]">
+              Replays scalp, intraday, and swing profiles across rolling historical folds and ranks them by risk-adjusted quality.
+            </span>
+          </div>
+        </label>
 
         {(running || progress) && (
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">

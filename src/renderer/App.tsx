@@ -10,7 +10,7 @@ import type {
   PortfolioSnapshot,
   Position,
   Trade,
-  AIDecision,
+  AgentCycleResult,
   AgentStatus,
   LogEntry,
   MarketTick,
@@ -92,7 +92,7 @@ export default function App() {
     unsubs.push(api.on(STREAM.PORTFOLIO, (d: any) => store.setPortfolio(d as PortfolioSnapshot)));
     unsubs.push(api.on(STREAM.POSITIONS, (d: any) => store.setPositions(d as Position[])));
     unsubs.push(api.on(STREAM.TRADE_EXECUTED, (d: any) => store.addTrade(d as Trade)));
-    unsubs.push(api.on(STREAM.AI_DECISION, (d: any) => store.setLastAIDecision(d as AIDecision)));
+    unsubs.push(api.on(STREAM.AI_DECISION, (d: any) => store.setLastAIDecision(d as AgentCycleResult)));
     unsubs.push(api.on(STREAM.AGENT_STATUS, (d: any) => store.setAgentStatus(d as AgentStatus)));
     unsubs.push(api.on(STREAM.LOG, (d: any) => store.addLog(d as LogEntry)));
     unsubs.push(api.on(STREAM.NOTIFICATION, (d: any) => store.addNotification(d as AppNotification)));
