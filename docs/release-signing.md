@@ -42,8 +42,10 @@ Expected values:
 Notes:
 
 - Electron Builder reads the certificate from `CSC_LINK` and the password from `CSC_KEY_PASSWORD`.
-- The workflow maps the GitHub secrets above into those env vars automatically.
+- The workflow exports those env vars only when both signing secrets are present.
+- If only one of the signing secrets is set, the workflow fails fast with a configuration error.
 - Notarization is attempted only when the Apple API key secrets are present.
+- If only part of the notarization secret trio is set, the workflow fails fast with a configuration error.
 
 ### Windows signing
 
