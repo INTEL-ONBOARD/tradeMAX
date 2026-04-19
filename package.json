@@ -16,6 +16,8 @@
     "build:main": "tsc -p tsconfig.main.json",
     "build:preload": "tsc -p tsconfig.preload.json",
     "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
+    "dist:mac:intel": "npm run build && electron-builder --mac dmg --x64 --publish never",
+    "dist:mac:arm64": "npm run build && electron-builder --mac dmg --arm64 --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --publish never",
     "dist:linux": "npm run build && electron-builder --linux AppImage --publish never",
     "test": "jest --watchman=false"
