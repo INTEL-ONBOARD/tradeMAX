@@ -89,7 +89,7 @@ class SafetyService {
     this.state.frozenReason = reason;
     this.persist();
     this.onFreezeCallback?.(reason);
-    alertService.onSafetyFreeze(reason);
+    alertService.onEmergencyAction(reason);
   }
 
   activateKillSwitch(): void {
@@ -97,6 +97,7 @@ class SafetyService {
     this.state.frozenReason = "KILL_SWITCH";
     this.state.emergencyShutdown = true;
     this.persist();
+    alertService.onEmergencyAction("KILL_SWITCH");
     logger.error("SAFETY", "KILL SWITCH ACTIVATED — all trading halted");
   }
 

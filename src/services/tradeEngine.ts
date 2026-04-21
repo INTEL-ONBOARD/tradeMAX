@@ -90,6 +90,22 @@ function toStartOfDay(now = new Date()): Date {
   return start;
 }
 
+function buildPositionKey(symbol: string, side: "BUY" | "SELL"): string {
+  return `${symbol.toUpperCase()}:${side}`;
+}
+
+function computeLiquidationDistancePct(position: Position): number | null {
+  if (!(position.markPrice > 0) || !(position.liquidationPrice && position.liquidationPrice > 0)) return null;
+
+  if (position.side === "BUY") {
+    if (position.liquidationPrice >= position.markPrice) return 0;
+    return ((position.markPrice - position.liquidationPrice) / position.markPrice) * 100;
+  }
+
+  if (position.liquidationPrice <= position.markPrice) return 0;
+  return ((position.liquidationPrice - position.markPrice) / position.markPrice) * 100;
+}
+
 export class TradeEngine {
   private userId = "";
   private symbol = "";
@@ -113,6 +129,12 @@ export class TradeEngine {
   private selectedExchange: "bybit" | "paper" = "paper";
   private streamedSymbol = "";
   private suppressStopNotification = false;
+  private liquidationRiskBandByPosition = new Map<string, number>();
+  private liquidationDistanceByPosition = new Map<string, number>();
+  private missingPositionCyclesByTrade = new Map<string, number>();
+  private lastExecutionBlockedNotifiedAt = new Map<string, number>();
+  private lastOrderFailureNotifiedAt = new Map<string, number>();
+  private lastSizingAnomalyNotifiedAt = new Map<string, number>();
 
   setCallbacks(cb: StreamCallback): void {
     this.callbacks = cb;
@@ -181,6 +203,12 @@ export class TradeEngine {
     this.leaderboard = [];
     this.trackedSymbols = [];
     this.symbolMetadata.clear();
+    this.liquidationRiskBandByPosition.clear();
+    this.liquidationDistanceByPosition.clear();
+    this.missingPositionCyclesByTrade.clear();
+    this.lastExecutionBlockedNotifiedAt.clear();
+    this.lastOrderFailureNotifiedAt.clear();
+    this.lastSizingAnomalyNotifiedAt.clear();
 
     safetyService.updateConfig({
       maxConsecutiveLosses: this.engineConfig.maxConsecutiveLosses,
@@ -287,6 +315,12 @@ export class TradeEngine {
     this.openaiApiKey = undefined;
     this.trackedSymbols = [];
     this.leaderboard = [];
+    this.liquidationRiskBandByPosition.clear();
+    this.liquidationDistanceByPosition.clear();
+    this.missingPositionCyclesByTrade.clear();
+    this.lastExecutionBlockedNotifiedAt.clear();
+    this.lastOrderFailureNotifiedAt.clear();
+    this.lastSizingAnomalyNotifiedAt.clear();
     this.emitStatus();
     if (wasActive) {
       await logger.info("TRADE", "Agent stopped");
@@ -391,6 +425,116 @@ export class TradeEngine {
     } catch (error) {
       await logger.error("TRADE", `Position fetch failed: ${error}`);
       return [];
+    }
+  }
+
+  private notifyExecutionBlocked(symbol: string, reason: string): void {
+    const key = `${symbol.toUpperCase()}:${reason}`;
+    const now = Date.now();
+    const lastSent = this.lastExecutionBlockedNotifiedAt.get(key) ?? 0;
+    if (now - lastSent < 90_000) return;
+    this.lastExecutionBlockedNotifiedAt.set(key, now);
+    alertService.onExecutionBlocked(symbol.toUpperCase(), reason);
+  }
+
+  private notifyOrderFailure(symbol: string, side: "BUY" | "SELL", reason: string): void {
+    const cleanReason = reason.trim() || "Unknown execution error";
+    const key = `${symbol.toUpperCase()}:${side}:${cleanReason}`;
+    const now = Date.now();
+    const lastSent = this.lastOrderFailureNotifiedAt.get(key) ?? 0;
+    if (now - lastSent < 90_000) return;
+    this.lastOrderFailureNotifiedAt.set(key, now);
+    alertService.onOrderExecutionFailed(symbol.toUpperCase(), side, cleanReason);
+  }
+
+  private notifySizingAnomaly(symbol: string, side: "BUY" | "SELL", requestedQty: number, filledQty: number): void {
+    if (!(requestedQty > 0) || !(filledQty > 0)) return;
+    const deltaPct = Math.abs((filledQty - requestedQty) / requestedQty) * 100;
+    if (deltaPct < 2) return;
+
+    const key = `${symbol.toUpperCase()}:${side}`;
+    const now = Date.now();
+    const lastSent = this.lastSizingAnomalyNotifiedAt.get(key) ?? 0;
+    if (now - lastSent < 90_000) return;
+    this.lastSizingAnomalyNotifiedAt.set(key, now);
+    alertService.onPositionSizingAnomaly(symbol.toUpperCase(), side, requestedQty, filledQty, deltaPct);
+  }
+
+  private monitorLiquidationRisk(positions: Position[]): void {
+    if (this.currentMode !== "futures") return;
+
+    const activeKeys = new Set<string>();
+    for (const position of positions) {
+      const key = buildPositionKey(position.symbol, position.side);
+      activeKeys.add(key);
+
+      const distancePct = computeLiquidationDistancePct(position);
+      if (distancePct === null) {
+        this.liquidationRiskBandByPosition.delete(key);
+        this.liquidationDistanceByPosition.delete(key);
+        continue;
+      }
+
+      this.liquidationDistanceByPosition.set(key, distancePct);
+      const currentBand = distancePct <= 2 ? 3 : distancePct <= 5 ? 2 : distancePct <= 10 ? 1 : 0;
+      const previousBand = this.liquidationRiskBandByPosition.get(key) ?? 0;
+      this.liquidationRiskBandByPosition.set(key, currentBand);
+
+      if (currentBand <= previousBand || currentBand === 0) continue;
+      const severity = currentBand >= 3 ? "critical" : currentBand === 2 ? "high" : "elevated";
+      alertService.onLiquidationRisk(position.symbol, position.side, distancePct, severity);
+    }
+
+    for (const key of [...this.liquidationRiskBandByPosition.keys()]) {
+      if (activeKeys.has(key)) continue;
+      this.liquidationRiskBandByPosition.delete(key);
+      this.liquidationDistanceByPosition.delete(key);
+    }
+  }
+
+  private async reconcileMissingExchangePositions(openTrades: ManagedTradeDoc[], positions: Position[]): Promise<void> {
+    if (this.selectedExchange !== "bybit" || this.currentMode !== "futures") return;
+
+    const activePositionKeys = new Set(
+      positions
+        .filter((position) => position.quantity > 0)
+        .map((position) => buildPositionKey(position.symbol, position.side)),
+    );
+
+    for (const tradeDoc of openTrades) {
+      const tradeId = tradeDoc._id.toString();
+      const positionKey = buildPositionKey(tradeDoc.symbol, tradeDoc.side);
+      if (activePositionKeys.has(positionKey)) {
+        this.missingPositionCyclesByTrade.delete(tradeId);
+        continue;
+      }
+
+      const missingCycles = (this.missingPositionCyclesByTrade.get(tradeId) ?? 0) + 1;
+      this.missingPositionCyclesByTrade.set(tradeId, missingCycles);
+      if (missingCycles < 2) continue;
+
+      this.missingPositionCyclesByTrade.delete(tradeId);
+      const recentDistance = this.liquidationDistanceByPosition.get(positionKey);
+      const likelyLiquidation = typeof recentDistance === "number" && recentDistance <= 2;
+      if (likelyLiquidation) {
+        alertService.onPossibleLiquidation(tradeDoc.symbol, tradeDoc.side);
+      }
+
+      try {
+        const fallbackExit = this.latestPrices.get(tradeDoc.symbol.toUpperCase()) ?? tradeDoc.entryPrice;
+        await logger.warn("TRADE", "Open trade missing from exchange position feed; closing local record", {
+          symbol: tradeDoc.symbol,
+          side: tradeDoc.side,
+          likelyLiquidation,
+        });
+        await this.closeTrade(
+          tradeDoc,
+          fallbackExit,
+          likelyLiquidation ? "SUSPECTED_LIQUIDATION" : "EXCHANGE_SYNC_CLOSE",
+        );
+      } catch (error) {
+        await logger.error("TRADE", `Failed to reconcile missing exchange position: ${error}`);
+      }
     }
   }
 
@@ -567,6 +711,9 @@ export class TradeEngine {
 
       let openTrades = await this.fetchManagedOpenTrades();
       const positions = await this.fetchPositions(openTrades);
+      this.monitorLiquidationRisk(positions);
+      await this.reconcileMissingExchangePositions(openTrades, positions);
+      openTrades = await this.fetchManagedOpenTrades();
       await this.refreshLeaderboard(openTrades.map((trade) => trade.symbol.toUpperCase()));
 
       const symbolSnapshots = new Map<string, Awaited<ReturnType<typeof buildLiveMarketSnapshot>>>();
@@ -632,6 +779,16 @@ export class TradeEngine {
           continue;
         }
 
+        if (decision.decision !== "BUY" && decision.decision !== "SELL") {
+          await this.persistCycle(cycle, {
+            tradeId: null,
+            filled: false,
+            blockedReason: "HOLD_DECISION",
+            symbolSelection: selection,
+          });
+          continue;
+        }
+
         const validation = buildExecutionValidation({
           decision,
           snapshot,
@@ -649,6 +806,7 @@ export class TradeEngine {
         });
 
         if (!validation.approved) {
+          this.notifyExecutionBlocked(symbol, validation.blockedReason ?? "Risk conditions not satisfied");
           await this.persistCycle(cycle, {
             tradeId: null,
             filled: false,
@@ -659,86 +817,111 @@ export class TradeEngine {
           continue;
         }
 
-        if (this.currentMode === "futures") {
-          await this.exchange.setLeverage(symbol, validation.leverage);
+        const side = decision.decision;
+
+        try {
+          if (this.currentMode === "futures") {
+            await this.exchange.setLeverage(symbol, validation.leverage);
+          }
+
+          const orderResult = await this.exchange.placeMarketOrder(symbol, side, validation.quantity);
+          this.notifySizingAnomaly(
+            symbol,
+            side,
+            validation.quantity,
+            orderResult.quantity || validation.quantity,
+          );
+          const fillPrice = orderResult.price || snapshot.currentPrice;
+          const slippagePct = decision.entry > 0 ? Math.abs((fillPrice - decision.entry) / decision.entry) * 100 : 0;
+          if (slippagePct > this.engineConfig.maxSlippagePct) {
+            await logger.warn("TRADE", `High slippage detected: ${slippagePct.toFixed(3)}%`, { cycleId: cycle.cycleId, symbol });
+          }
+
+          const portfolioSlot = openTradeCount + 1;
+          const tradeDoc = (await TradeModel.create({
+            userId: this.userId,
+            symbol,
+            side,
+            type: "MARKET",
+            entryPrice: fillPrice,
+            quantity: orderResult.quantity || validation.quantity,
+            status: "OPEN",
+            source: "AI",
+            exchange: this.selectedExchange,
+            mode: this.currentMode,
+            aiDecision: decision,
+            riskCheck: validation.riskCheck,
+            pipelineRun: cycle,
+            memoryReferences: cycle.retrievedMemories.map((item) => item.id),
+            portfolioSlot,
+            selectionRationale: selection,
+          })) as ManagedTradeDoc;
+
+          await this.persistCycle(cycle, {
+            tradeId: tradeDoc._id.toString(),
+            filled: true,
+            entryPrice: fillPrice,
+            portfolioSlot,
+            symbolSelection: selection,
+            riskCheck: validation.riskCheck,
+          });
+
+          this.lastTradeTimestampBySymbol.set(symbol, Date.now());
+          openTradeCount += 1;
+
+          this.callbacks.onTradeExecuted?.({
+            _id: tradeDoc._id.toString(),
+            userId: this.userId,
+            symbol,
+            side,
+            type: "MARKET",
+            entryPrice: fillPrice,
+            exitPrice: null,
+            quantity: orderResult.quantity || validation.quantity,
+            pnl: null,
+            status: "OPEN",
+            source: "AI",
+            exchange: this.selectedExchange,
+            mode: this.currentMode,
+            aiDecision: decision,
+            riskCheck: validation.riskCheck,
+            pipelineRun: cycle,
+            memoryReferences: cycle.retrievedMemories.map((item) => item.id),
+            portfolioSlot,
+            selectionRationale: selection,
+            createdAt: tradeDoc.createdAt.toISOString(),
+            closedAt: null,
+          });
+          await logger.info("TRADE", `Order executed: ${side} ${symbol}`, {
+            cycleId: cycle.cycleId,
+            quantity: validation.quantity,
+            fillPrice,
+            portfolioSlot,
+          });
+          alertService.onTradeExecuted(
+            symbol,
+            side,
+            orderResult.quantity || validation.quantity,
+            fillPrice,
+          );
+
+          openTrades.push(tradeDoc);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          await logger.error("TRADE", `Order execution failed: ${reason}`, {
+            cycleId: cycle.cycleId,
+            symbol,
+            side,
+          });
+          this.notifyOrderFailure(symbol, side, reason);
+          await this.persistCycle(cycle, {
+            tradeId: null,
+            filled: false,
+            blockedReason: `ORDER_FAILED: ${reason}`,
+            symbolSelection: selection,
+            riskCheck: validation.riskCheck,
+          });
         }
-
-        const orderResult = await this.exchange.placeMarketOrder(symbol, decision.decision as "BUY" | "SELL", validation.quantity);
-        const fillPrice = orderResult.price || snapshot.currentPrice;
-        const slippagePct = decision.entry > 0 ? Math.abs((fillPrice - decision.entry) / decision.entry) * 100 : 0;
-        if (slippagePct > this.engineConfig.maxSlippagePct) {
-          await logger.warn("TRADE", `High slippage detected: ${slippagePct.toFixed(3)}%`, { cycleId: cycle.cycleId, symbol });
-        }
-
-        const portfolioSlot = openTradeCount + 1;
-        const tradeDoc = (await TradeModel.create({
-          userId: this.userId,
-          symbol,
-          side: decision.decision,
-          type: "MARKET",
-          entryPrice: fillPrice,
-          quantity: orderResult.quantity || validation.quantity,
-          status: "OPEN",
-          source: "AI",
-          exchange: this.selectedExchange,
-          mode: this.currentMode,
-          aiDecision: decision,
-          riskCheck: validation.riskCheck,
-          pipelineRun: cycle,
-          memoryReferences: cycle.retrievedMemories.map((item) => item.id),
-          portfolioSlot,
-          selectionRationale: selection,
-        })) as ManagedTradeDoc;
-
-        await this.persistCycle(cycle, {
-          tradeId: tradeDoc._id.toString(),
-          filled: true,
-          entryPrice: fillPrice,
-          portfolioSlot,
-          symbolSelection: selection,
-          riskCheck: validation.riskCheck,
-        });
-
-        this.lastTradeTimestampBySymbol.set(symbol, Date.now());
-        openTradeCount += 1;
-
-        this.callbacks.onTradeExecuted?.({
-          _id: tradeDoc._id.toString(),
-          userId: this.userId,
-          symbol,
-          side: decision.decision as "BUY" | "SELL",
-          type: "MARKET",
-          entryPrice: fillPrice,
-          exitPrice: null,
-          quantity: orderResult.quantity || validation.quantity,
-          pnl: null,
-          status: "OPEN",
-          source: "AI",
-          exchange: this.selectedExchange,
-          mode: this.currentMode,
-          aiDecision: decision,
-          riskCheck: validation.riskCheck,
-          pipelineRun: cycle,
-          memoryReferences: cycle.retrievedMemories.map((item) => item.id),
-          portfolioSlot,
-          selectionRationale: selection,
-          createdAt: tradeDoc.createdAt.toISOString(),
-          closedAt: null,
-        });
-        await logger.info("TRADE", `Order executed: ${decision.decision} ${symbol}`, {
-          cycleId: cycle.cycleId,
-          quantity: validation.quantity,
-          fillPrice,
-          portfolioSlot,
-        });
-        alertService.onTradeExecuted(
-          symbol,
-          decision.decision,
-          orderResult.quantity || validation.quantity,
-          fillPrice,
-        );
-
-        openTrades.push(tradeDoc);
       }
 
       this.emitStatus();

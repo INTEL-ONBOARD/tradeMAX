@@ -255,8 +255,13 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
             </div>
 
             {autoPair ? (
-              <div className="flex items-center justify-center py-3 rounded-lg border border-dashed border-[var(--color-profit)]" style={{ background: "rgba(16,185,129,0.05)" }}>
-                <p className="text-xs text-[var(--color-profit)] font-medium">The AI will scan a broader live USDT market universe and rotate into the strongest opportunities automatically</p>
+              <div
+                className="flex items-center justify-center px-4 py-4 rounded-lg border border-dashed border-[var(--color-profit)] text-center"
+                style={{ background: "linear-gradient(180deg, rgba(16,185,129,0.10), rgba(16,185,129,0.04))" }}
+              >
+                <p className="max-w-[34rem] text-xs leading-normal text-[var(--color-profit)] font-medium">
+                  Running Agent Mode
+                </p>
               </div>
             ) : (
               <PairDropdown

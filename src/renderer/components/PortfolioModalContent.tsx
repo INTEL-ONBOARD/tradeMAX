@@ -15,7 +15,11 @@ const FILTER_MS: Record<string, number> = {
   "1M": 30 * 86400_000,
 };
 
-function catmullRomPath(points: { x: number; y: number }[]): string {
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
+}
+
+function catmullRomPath(points: { x: number; y: number }[], minY: number, maxY: number): string {
   if (points.length < 2) return "";
   const tension = 0.3;
   let d = `M ${points[0].x} ${points[0].y}`;
@@ -25,9 +29,9 @@ function catmullRomPath(points: { x: number; y: number }[]): string {
     const p2 = points[i + 1];
     const p3 = points[Math.min(i + 2, points.length - 1)];
     const cp1x = p1.x + (p2.x - p0.x) * tension;
-    const cp1y = p1.y + (p2.y - p0.y) * tension;
+    const cp1y = clamp(p1.y + (p2.y - p0.y) * tension, minY, maxY);
     const cp2x = p2.x - (p3.x - p1.x) * tension;
-    const cp2y = p2.y - (p3.y - p1.y) * tension;
+    const cp2y = clamp(p2.y - (p3.y - p1.y) * tension, minY, maxY);
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
   return d;
@@ -97,7 +101,7 @@ export function PortfolioModalContent() {
     y: padT + (1 - (val - min) / range) * (H - padT - padB),
   }));
 
-  const linePath = catmullRomPath(points);
+  const linePath = catmullRomPath(points, padT, H - padB);
   const lastPt = points[points.length - 1];
   const areaPath = `${linePath} L ${W} ${H} L 0 ${H} Z`;
   const chartColor = isProfitable ? "var(--color-profit)" : "var(--color-loss)";
@@ -183,7 +187,7 @@ export function PortfolioModalContent() {
         </div>
 
         {/* SVG + overlays share same relative container (no padding mismatch) */}
-        <div className="relative flex-1 min-h-0" ref={chartContainerRef}>
+        <div className="relative flex-1 min-h-0 overflow-hidden" ref={chartContainerRef}>
           {!hasFilteredData && (
             <div className="absolute inset-0 flex items-center justify-center z-10">
               <p className="text-xs text-[var(--text-tertiary)]">No trades in {activeFilter} window — try ALL</p>
@@ -191,7 +195,7 @@ export function PortfolioModalContent() {
           )}
           <svg
             ref={svgRef}
-            className="absolute inset-0 w-full h-full overflow-visible cursor-crosshair"
+            className="absolute inset-0 w-full h-full overflow-hidden cursor-crosshair"
             viewBox={`0 0 ${W} ${H}`}
             preserveAspectRatio="none"
             onMouseMove={handleMouseMove}

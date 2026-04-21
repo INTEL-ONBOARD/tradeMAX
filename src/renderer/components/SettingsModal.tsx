@@ -1121,7 +1121,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </SettingRow>
                     <SettingRow
                       label="Risk & Safety"
-                      description="Daily loss warnings, safety freezes, stop-loss exits, and kill switch events."
+                      description="Daily loss warnings, liquidation risk alerts, size-mismatch warnings, blocked orders, emergency actions, stop-loss exits, and kill switch events."
                     >
                       <Toggle
                         checked={ns.risk}

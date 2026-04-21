@@ -49,6 +49,57 @@ class AlertService {
     }
   }
 
+  onExecutionBlocked(symbol: string, reason: string): void {
+    this.emit("risk", "Trade blocked by risk guard", `${symbol}: ${reason}`);
+  }
+
+  onOrderExecutionFailed(symbol: string, side: "BUY" | "SELL", reason: string): void {
+    this.emit("system", "Order execution failed", `${symbol} ${side} could not execute: ${reason}`);
+  }
+
+  onPositionSizingAnomaly(
+    symbol: string,
+    side: "BUY" | "SELL",
+    requestedQty: number,
+    filledQty: number,
+    deltaPct: number,
+  ): void {
+    this.emit(
+      "risk",
+      "Position size mismatch",
+      `${symbol} ${side} filled ${filledQty.toFixed(6)} vs requested ${requestedQty.toFixed(6)} (${deltaPct.toFixed(1)}% diff)`,
+    );
+  }
+
+  onLiquidationRisk(
+    symbol: string,
+    side: "BUY" | "SELL",
+    distancePct: number,
+    severity: "elevated" | "high" | "critical",
+  ): void {
+    const label = severity === "critical" ? "Critical liquidation risk" : "Liquidation risk warning";
+    this.emit("risk", label, `${symbol} ${side} is ${distancePct.toFixed(2)}% away from liquidation`);
+  }
+
+  onPossibleLiquidation(symbol: string, side: "BUY" | "SELL"): void {
+    this.emit("risk", "Possible liquidation detected", `${symbol} ${side} position disappeared from exchange`);
+  }
+
+  onEmergencyAction(reason: SafetyState["frozenReason"]): void {
+    const detail =
+      reason === "CONSECUTIVE_LOSSES"
+        ? "Trading paused after consecutive-loss limit was hit."
+        : reason === "DRAWDOWN"
+          ? "Trading paused after max drawdown limit was hit."
+          : reason === "API_FAILURE"
+            ? "Trading paused because exchange connectivity became unreliable."
+            : reason === "KILL_SWITCH"
+              ? "Emergency shutdown is active. All trading is halted until reset."
+              : "Emergency protection is active.";
+
+    this.emit("risk", "Emergency action applied", detail);
+  }
+
   onAIDecision(decision: string, confidence: number, reason: string): void {
     if (decision !== "HOLD") {
       this.emit("ai", `AI Signal: ${decision}`, `Confidence: ${(confidence * 100).toFixed(0)}% — ${reason}`);

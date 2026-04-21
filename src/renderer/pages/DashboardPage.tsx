@@ -135,7 +135,7 @@ export function DashboardPage() {
 
                 <div className="flex-1 flex gap-4 min-h-0">
                   {/* Left column — Recent Trades (full height) */}
-                  <div className="flex-1 overflow-auto"><TradesPanel /></div>
+                  <div className="flex-1 min-h-0 overflow-hidden"><TradesPanel /></div>
                   {/* Right column — Portfolio on top, AI Signal below */}
                   <div className="w-[300px] shrink-0 flex flex-col gap-4 overflow-hidden">
                     <div className="overflow-hidden"><PortfolioPanel /></div>

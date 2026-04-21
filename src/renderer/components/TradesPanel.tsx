@@ -50,6 +50,7 @@ function exportToJSON(trades: TradeRow[]) {
 export function TradesPanel() {
   const agentTrades = useAppStore((s) => s.trades);
   const exchangeHistory = useAppStore((s) => s.exchangeHistory);
+  const showTradeExportButtons = false;
 
   // Merge agent trades (local DB) + exchange history (Bybit API), sorted newest first
   const allTrades = useMemo<TradeRow[]>(() => {
@@ -83,7 +84,6 @@ export function TradesPanel() {
     return [...fromAgent, ...unique].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
   }, [agentTrades, exchangeHistory]);
 
-  const [statusFilter, setStatusFilter] = useState("all");
   const [sideFilter, setSideFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -91,20 +91,19 @@ export function TradesPanel() {
 
   const filteredTrades = useMemo(() => {
     return allTrades.filter(t => {
-      if (statusFilter !== "all" && t.status !== statusFilter) return false;
       if (sideFilter !== "all" && t.side !== sideFilter) return false;
       if (searchTerm && !t.symbol.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       if (dateFrom && new Date(t.time) < new Date(dateFrom)) return false;
       if (dateTo && new Date(t.time) > new Date(dateTo + "T23:59:59")) return false;
       return true;
     });
-  }, [allTrades, statusFilter, sideFilter, searchTerm, dateFrom, dateTo]);
+  }, [allTrades, sideFilter, searchTerm, dateFrom, dateTo]);
 
   const selectClass = "px-2 py-1 text-[11px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--color-info)] transition-colors";
   const inputClass = "px-2 py-1 text-[11px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--color-info)] transition-colors";
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -118,12 +117,6 @@ export function TradesPanel() {
 
       {/* Filter Bar */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={selectClass}>
-          <option value="all">All Status</option>
-          <option value="OPEN">Open</option>
-          <option value="CLOSED">Closed</option>
-        </select>
-
         <select value={sideFilter} onChange={e => setSideFilter(e.target.value)} className={selectClass}>
           <option value="all">All Sides</option>
           <option value="BUY">BUY</option>
@@ -133,29 +126,31 @@ export function TradesPanel() {
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={inputClass} style={{ width: 110 }} />
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={inputClass} style={{ width: 110 }} />
 
-        <div className="relative">
+        <div className="relative ml-auto flex-1 min-w-[180px]">
           <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
-          <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Symbol..." className={`${inputClass} pl-6`} style={{ width: 100 }} />
+          <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Symbol..." className={`${inputClass} pl-6 w-full`} />
         </div>
 
-        <div className="ml-auto flex items-center gap-1.5">
-          <button
-            onClick={() => exportToCSV(filteredTrades)}
-            disabled={filteredTrades.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
-          >
-            <Download size={10} />
-            CSV
-          </button>
-          <button
-            onClick={() => exportToJSON(filteredTrades)}
-            disabled={filteredTrades.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
-          >
-            <Download size={10} />
-            JSON
-          </button>
-        </div>
+        {showTradeExportButtons && (
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              onClick={() => exportToCSV(filteredTrades)}
+              disabled={filteredTrades.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+            >
+              <Download size={10} />
+              CSV
+            </button>
+            <button
+              onClick={() => exportToJSON(filteredTrades)}
+              disabled={filteredTrades.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+            >
+              <Download size={10} />
+              JSON
+            </button>
+          </div>
+        )}
       </div>
 
       {allTrades.length === 0 ? (
@@ -171,7 +166,7 @@ export function TradesPanel() {
           <p className="text-xs text-[var(--text-tertiary)] mt-1 opacity-60">Try adjusting your filter criteria</p>
         </div>
       ) : (
-        <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto">
           <table className="w-full text-xs">
             <tbody>
               {filteredTrades.map((t, i) => {

@@ -69,6 +69,38 @@ describe("alertService", () => {
     expect(received).toHaveLength(1); // at threshold - 1
   });
 
+  it("emits risk-blocked notifications", () => {
+    alertService.onExecutionBlocked("BTCUSDT", "Daily loss limit reached");
+    expect(received).toHaveLength(1);
+    expect(received[0].type).toBe("risk");
+    expect(received[0].title).toBe("Trade blocked by risk guard");
+  });
+
+  it("emits liquidation and order-failure notifications", () => {
+    alertService.onLiquidationRisk("BTCUSDT", "BUY", 1.9, "critical");
+    alertService.onPossibleLiquidation("ETHUSDT", "SELL");
+    alertService.onOrderExecutionFailed("SOLUSDT", "BUY", "insufficient margin");
+
+    expect(received).toHaveLength(3);
+    expect(received[0].title).toBe("Critical liquidation risk");
+    expect(received[1].title).toBe("Possible liquidation detected");
+    expect(received[2].title).toBe("Order execution failed");
+  });
+
+  it("emits position sizing anomaly notifications", () => {
+    alertService.onPositionSizingAnomaly("BTCUSDT", "BUY", 1.2, 0.96, 20);
+    expect(received).toHaveLength(1);
+    expect(received[0].title).toBe("Position size mismatch");
+    expect(received[0].message).toContain("20.0%");
+  });
+
+  it("emits emergency action notifications", () => {
+    alertService.onEmergencyAction("DRAWDOWN");
+    expect(received).toHaveLength(1);
+    expect(received[0].title).toBe("Emergency action applied");
+    expect(received[0].message).toContain("drawdown");
+  });
+
   it("does nothing without callback", () => {
     alertService.clearCallback();
     alertService.onTradeExecuted("BTCUSDT", "BUY", 0.5, 50000);
