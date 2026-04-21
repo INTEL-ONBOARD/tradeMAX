@@ -75,7 +75,7 @@ export function AgentControlPanel() {
 
       <h2 className="text-xl font-medium text-[var(--text-primary)] mb-1">TradeMAX Agent</h2>
 
-      {/* Pair badge + Config button */}
+      {/* Pair badges */}
       <div className="flex items-center gap-2 mb-6">
         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--bg-inset)] text-[var(--text-secondary)] border border-[var(--border)]">
           {autoPair ? `AUTO ${activeSymbol}` : activeSymbol}
@@ -88,14 +88,6 @@ export function AgentControlPanel() {
         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--bg-inset)] text-[var(--text-secondary)] border border-[var(--border)]">
           {profile.toUpperCase()}
         </span>
-        <button
-          onClick={() => setConfigOpen(true)}
-          disabled={isRunning}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] border border-transparent hover:border-[var(--border)] transition-all disabled:opacity-40 disabled:pointer-events-none"
-        >
-          <Sliders size={11} />
-          Configure
-        </button>
       </div>
 
       {/* Main Action Button */}
@@ -119,6 +111,15 @@ export function AgentControlPanel() {
 
       <button onClick={handleKillSwitch} className={`mt-4 text-sm underline transition-colors ${confirmKill ? "text-[var(--color-loss)] font-bold" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"}`}>
         {confirmKill ? "Confirm Emergency Kill" : "Emergency Kill Switch"}
+      </button>
+
+      <button
+        onClick={() => setConfigOpen(true)}
+        disabled={isRunning}
+        className="mt-2 flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] border border-transparent hover:border-[var(--border)] transition-all disabled:opacity-40 disabled:pointer-events-none"
+      >
+        <Sliders size={12} />
+        Configure
       </button>
 
       {agentStatus.frozen && (

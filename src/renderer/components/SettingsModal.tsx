@@ -3,7 +3,7 @@ import { Modal } from "./Modal";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
 import { Settings, Shield, Edit3, Monitor, Bell, CheckCircle, Loader2, Eye, EyeOff } from "./icons";
-import type { ClosedPnlRecord, PortfolioSnapshot, Position, ProfileConfigRecord, UserSettings } from "../../shared/types";
+import type { ClosedPnlRecord, PortfolioSnapshot, Position, UserSettings } from "../../shared/types";
 
 function useDebouncedCallback<T extends (...args: any[]) => any>(fn: T, delay: number): T {
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -828,13 +828,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const [apiTabLoading, setApiTabLoading] = useState(false);
   const [apiTabLoadingLabel, setApiTabLoadingLabel] = useState("Loading saved keys...");
-  const [showAdvancedEngine, setShowAdvancedEngine] = useState(false);
-  const [profileConfigs, setProfileConfigs] = useState<ProfileConfigRecord[]>([]);
-  const [profilePresetName, setProfilePresetName] = useState("");
-  const [profileActionState, setProfileActionState] = useState<"idle" | "loading" | "saving" | "applying" | "deleting">("idle");
-  const [profileActionError, setProfileActionError] = useState<string | null>(null);
-  const [aiModels, setAiModels] = useState<{ id: string; name: string }[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
 
   const showSaved = () => {
     setSaveStatus("saved");
@@ -888,7 +881,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const rp = settings?.riskProfile;
   const ec = settings?.engineConfig;
   const ns = settings?.notificationSettings;
-  const activeProfile = ec?.tradingProfile || "intraday";
   const notificationsTabLoading = activeTab === "notifications" && !ns;
   const riskTabLoading = activeTab === "risk" && !rp;
   const engineTabLoading = activeTab === "engine" && !ec;
@@ -912,100 +904,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setApiTabLoadingLabel(label);
     }
   }, []);
-
-  useEffect(() => {
-    if (activeTab !== "engine" || !showAdvancedEngine || aiModels.length > 0) return;
-    setModelsLoading(true);
-    window.api.invoke(IPC.AI_LIST_MODELS)
-      .then((data: { id: string; name: string }[]) => setAiModels(data))
-      .catch(() => {})
-      .finally(() => setModelsLoading(false));
-  }, [activeTab, showAdvancedEngine, aiModels.length]);
-
-  useEffect(() => {
-    if (activeTab !== "engine" || !showAdvancedEngine || !ec) return;
-    if (!profilePresetName.trim()) {
-      setProfilePresetName(`${activeProfile} preset`);
-    }
-
-    setProfileActionState("loading");
-    setProfileActionError(null);
-    window.api.invoke(IPC.PROFILE_LIST, { profile: activeProfile })
-      .then((data) => setProfileConfigs((data as ProfileConfigRecord[]) ?? []))
-      .catch((err) => {
-        setProfileActionError(err instanceof Error ? err.message : "Failed to load profile presets");
-        setProfileConfigs([]);
-      })
-      .finally(() => setProfileActionState("idle"));
-  }, [activeTab, showAdvancedEngine, ec, activeProfile]);
-
-  const refreshProfileConfigs = async () => {
-    if (!ec) return;
-    setProfileActionState("loading");
-    setProfileActionError(null);
-    try {
-      const data = await window.api.invoke(IPC.PROFILE_LIST, { profile: activeProfile });
-      setProfileConfigs((data as ProfileConfigRecord[]) ?? []);
-    } catch (err) {
-      setProfileActionError(err instanceof Error ? err.message : "Failed to load profile presets");
-    } finally {
-      setProfileActionState("idle");
-    }
-  };
-
-  const handleSaveProfileConfig = async () => {
-    if (!ec) return;
-    const name = profilePresetName.trim();
-    if (!name) {
-      setProfileActionError("Preset name is required");
-      return;
-    }
-
-    setProfileActionState("saving");
-    setProfileActionError(null);
-    try {
-      await window.api.invoke(IPC.PROFILE_SAVE, {
-        name,
-        profile: activeProfile,
-        config: ec,
-      });
-      await refreshProfileConfigs();
-      setProfilePresetName(name);
-    } catch (err) {
-      setProfileActionError(err instanceof Error ? err.message : "Failed to save preset");
-    } finally {
-      setProfileActionState("idle");
-    }
-  };
-
-  const handleApplyProfileConfig = async (configId: string) => {
-    setProfileActionState("applying");
-    setProfileActionError(null);
-    try {
-      const updated = await window.api.invoke(IPC.PROFILE_APPLY, { id: configId }) as { settings: UserSettings };
-      if (updated?.settings) {
-        setSettings(updated.settings);
-      }
-      await refreshProfileConfigs();
-    } catch (err) {
-      setProfileActionError(err instanceof Error ? err.message : "Failed to apply preset");
-    } finally {
-      setProfileActionState("idle");
-    }
-  };
-
-  const handleDeleteProfileConfig = async (configId: string) => {
-    setProfileActionState("deleting");
-    setProfileActionError(null);
-    try {
-      await window.api.invoke(IPC.PROFILE_DELETE, { id: configId });
-      await refreshProfileConfigs();
-    } catch (err) {
-      setProfileActionError(err instanceof Error ? err.message : "Failed to delete preset");
-    } finally {
-      setProfileActionState("idle");
-    }
-  };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Settings" width="750px" height="500px">
@@ -1367,7 +1265,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     {ec.autoPairSelection ? (
                       <>
                         <p className="pt-1 text-[11px] italic text-[var(--text-tertiary)]">
-                          You do not need to choose a pair manually. If you ever want to restrict the engine to a custom shortlist, that option lives under Advanced Engine Controls.
+                          Automatic discovery is fully managed by the engine. No manual shortlist setup is required.
                         </p>
                         <SettingRow
                           label="Max Active Pairs"
@@ -1579,231 +1477,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     )}
                   </SettingsSection>
 
-                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[13px] font-semibold text-[var(--text-primary)]">Advanced Engine Controls</p>
-                        <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 max-w-[30rem]">
-                          Hidden by default because these controls tune the internal AI pipeline and scoring logic, not the everyday trading experience.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowAdvancedEngine((prev) => !prev)}
-                        className="px-3 py-1.5 text-[11px] font-medium rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-overlay)]"
-                      >
-                        {showAdvancedEngine ? "Hide" : "Show"}
-                      </button>
-                    </div>
-
-                    {showAdvancedEngine && (
-                      <div className="mt-3 space-y-4 border-t border-[var(--border)] pt-3">
-                        <SettingsSection
-                          title="Profile Presets"
-                          description="Save a full engine setup and re-apply it later for this trading tempo."
-                        >
-                          <div className="flex items-center justify-between gap-3 mb-3">
-                            <div className="px-2 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-inset)] text-[10px] font-semibold tracking-wider text-[var(--text-secondary)] uppercase">
-                              {activeProfile}
-                            </div>
-                            {profileActionState === "loading" && (
-                              <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
-                                <Loader2 size={12} className="animate-spin" />
-                                Loading presets...
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mb-3">
-                            <input
-                              type="text"
-                              value={profilePresetName}
-                              onChange={(e) => setProfilePresetName(e.target.value)}
-                              placeholder={`${activeProfile} preset`}
-                              className="flex-1 px-3 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
-                            />
-                            <button
-                              onClick={() => void handleSaveProfileConfig()}
-                              disabled={profileActionState === "saving" || !ec}
-                              className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              style={{
-                                background: "var(--color-info-bg)",
-                                color: "var(--color-info)",
-                                border: "1px solid var(--color-info-border)",
-                              }}
-                            >
-                              {profileActionState === "saving" ? "Saving..." : "Save Preset"}
-                            </button>
-                          </div>
-                          {profileActionError && (
-                            <p className="text-[11px] text-[var(--color-loss)] font-medium mb-2">
-                              {profileActionError}
-                            </p>
-                          )}
-                          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                            {profileConfigs.length > 0 ? (
-                              profileConfigs.map((config) => (
-                                <div key={config._id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-inset)] px-3 py-2">
-                                  <div>
-                                    <p className="text-[12px] font-medium text-[var(--text-primary)]">{config.name}</p>
-                                    <p className="text-[10px] text-[var(--text-tertiary)]">
-                                      {new Date(config.updatedAt).toLocaleString()} · {config.profile}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() => void handleApplyProfileConfig(config._id)}
-                                      disabled={profileActionState === "applying" || profileActionState === "deleting" || profileActionState === "saving"}
-                                      className="px-2.5 py-1 text-[10px] font-medium rounded-md border border-[var(--color-profit-border)] bg-[var(--color-profit-bg)] text-[var(--color-profit)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                      Load
-                                    </button>
-                                    <button
-                                      onClick={() => void handleDeleteProfileConfig(config._id)}
-                                      disabled={profileActionState === "applying" || profileActionState === "deleting" || profileActionState === "saving"}
-                                      className="px-2.5 py-1 text-[10px] font-medium rounded-md border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)] text-[var(--color-loss)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-[11px] text-[var(--text-tertiary)] italic">No saved presets for this profile yet.</p>
-                            )}
-                          </div>
-                        </SettingsSection>
-
-                        <SettingsSection
-                          title="AI Model Routing"
-                          description="Control which models handle analysis, planning, execution review, and post-trade learning."
-                        >
-                          <SettingRow label="AI Retry Count" description="How many times to retry an AI step when it fails.">
-                            <NumberInput value={ec.aiRetryCount} min={0} max={5} step={1} onChange={(v) => updateEngineConfig("aiRetryCount", Math.round(v))} />
-                          </SettingRow>
-                          <SettingRow label="Primary AI Model" description="Default model used for the trading decision pipeline.">
-                            {modelsLoading ? (
-                              <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
-                                <Loader2 size={12} className="animate-spin" /> Loading models...
-                              </span>
-                            ) : (
-                              <SelectInput
-                                value={ec.aiModel}
-                                options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.aiModel]}
-                                onChange={(v) => updateEngineConfig("aiModel", v)}
-                              />
-                            )}
-                          </SettingRow>
-                          <SettingRow label="Market Analyst Model" description="Model used to judge market regime and no-trade conditions.">
-                            <SelectInput
-                              value={ec.stageModels.marketAnalyst}
-                              options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.marketAnalyst]}
-                              onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, marketAnalyst: v })}
-                            />
-                          </SettingRow>
-                          <SettingRow label="Trade Architect Model" description="Model used to design entries, stops, and targets.">
-                            <SelectInput
-                              value={ec.stageModels.tradeArchitect}
-                              options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.tradeArchitect]}
-                              onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, tradeArchitect: v })}
-                            />
-                          </SettingRow>
-                          <SettingRow label="Execution Critic Model" description="Model used for final approval or HOLD conversion.">
-                            <SelectInput
-                              value={ec.stageModels.executionCritic}
-                              options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.executionCritic]}
-                              onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, executionCritic: v })}
-                            />
-                          </SettingRow>
-                          <SettingRow label="Post-Trade Reviewer Model" description="Model used for after-action review and learning memory updates.">
-                            <SelectInput
-                              value={ec.stageModels.postTradeReviewer}
-                              options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.postTradeReviewer]}
-                              onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, postTradeReviewer: v })}
-                            />
-                          </SettingRow>
-                        </SettingsSection>
-
-                        <SettingsSection
-                          title="Selection And Memory Tuning"
-                          description="Fine-tune how much trade history and local memory affect symbol ranking and AI context."
-                        >
-                          <SettingRow label="Restrict Auto Discovery To Shortlist" description="Only use this if you want to limit automatic discovery to a custom set of pairs.">
-                            <Toggle
-                              checked={ec.restrictAutoPairSelectionToShortlist}
-                              onChange={(v) => updateEngineConfig("restrictAutoPairSelectionToShortlist", v)}
-                            />
-                          </SettingRow>
-                          {ec.restrictAutoPairSelectionToShortlist && (
-                            <SettingRow label="Auto Discovery Shortlist" description="Comma-separated pairs the engine is allowed to discover from when shortlist restriction is enabled.">
-                              <TextInput
-                                value={(ec.candidateSymbols ?? ec.watchlist ?? []).join(", ")}
-                                onChange={(v) => updateEngineConfig("candidateSymbols", v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))}
-                                className="w-[320px] px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
-                              />
-                            </SettingRow>
-                          )}
-                          <SettingRow label="Memory Retrieval Count" description="Number of prior cases pulled into each AI cycle.">
-                            <NumberInput value={ec.memoryRetrievalCount} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("memoryRetrievalCount", Math.round(v))} />
-                          </SettingRow>
-                          <SettingRow label="Memory Lookback Days" description="How far back local AI memory search is allowed to go.">
-                            <NumberInput value={ec.memoryLookbackDays} min={1} max={365} step={1} onChange={(v) => updateEngineConfig("memoryLookbackDays", Math.round(v))} />
-                          </SettingRow>
-                          <SettingRow label="Performance Lookback Days" description="Recent trade window used to score candidate pairs.">
-                            <NumberInput value={ec.performanceLookbackDays} min={1} max={180} step={1} onChange={(v) => updateEngineConfig("performanceLookbackDays", Math.round(v))} />
-                          </SettingRow>
-                          <SettingRow label="Minimum Sample Size" description="Closed trades needed before a pair’s win rate is enforced.">
-                            <NumberInput value={ec.minSymbolSampleSize} min={1} max={50} step={1} onChange={(v) => updateEngineConfig("minSymbolSampleSize", Math.round(v))} />
-                          </SettingRow>
-                          <SettingRow label="Minimum Pair Win Rate" description="Pairs below this win rate get suppressed once enough history exists.">
-                            <NumberInput value={ec.minSymbolWinRate} min={0} max={1} step={0.05} onChange={(v) => updateEngineConfig("minSymbolWinRate", v)} />
-                          </SettingRow>
-                          <SettingRow label="Critique Strictness" description="How aggressively the execution critic downgrades ideas.">
-                            <SelectInput value={ec.critiqueStrictness} options={["low", "balanced", "high"]} onChange={(v) => updateEngineConfig("critiqueStrictness", v)} />
-                          </SettingRow>
-                          <SettingRow label="Hold-Time Bias" description="Bias the system toward shorter or longer holding periods.">
-                            <SelectInput value={ec.holdTimeBias} options={["shorter", "balanced", "longer"]} onChange={(v) => updateEngineConfig("holdTimeBias", v)} />
-                          </SettingRow>
-                          <SettingRow label="Exit Style Preference" description="Bias the system toward fixed, trailing, or hybrid exits.">
-                            <SelectInput value={ec.exitStylePreference} options={["fixed", "trailing", "hybrid", "balanced"]} onChange={(v) => updateEngineConfig("exitStylePreference", v)} />
-                          </SettingRow>
-                        </SettingsSection>
-
-                        <SettingsSection
-                          title="Indicators And Reliability"
-                          description="Low-level analysis inputs and fallback controls. Change these only if you know the impact."
-                        >
-                          <SettingRow label="Enable Multi-Model Voting" description="Use multiple AI models and combine their signals.">
-                            <Toggle checked={ec.enableMultiModelVoting} onChange={(v) => updateEngineConfig("enableMultiModelVoting", v)} />
-                          </SettingRow>
-                          <SettingRow label="Voting Models" description="Comma-separated model IDs used when voting is enabled.">
-                            <TextInput
-                              value={(ec.votingModels ?? []).join(", ")}
-                              onChange={(v) => updateEngineConfig("votingModels", v.split(",").map((s) => s.trim()).filter(Boolean))}
-                              className="w-[320px] px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
-                            />
-                          </SettingRow>
-                          <SettingRow label="Websocket Reconnect Retries" description="Reconnect attempts before live streaming gives up.">
-                            <NumberInput value={ec.wsReconnectRetries} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("wsReconnectRetries", Math.round(v))} />
-                          </SettingRow>
-                          <SettingRow label="EMA Indicator" description="Include exponential moving averages in analysis.">
-                            <Toggle checked={ec.enableEMA} onChange={(v) => updateEngineConfig("enableEMA", v)} />
-                          </SettingRow>
-                          <SettingRow label="Bollinger Bands" description="Include Bollinger Band ranges in analysis.">
-                            <Toggle checked={ec.enableBollingerBands} onChange={(v) => updateEngineConfig("enableBollingerBands", v)} />
-                          </SettingRow>
-                          <SettingRow label="ADX Indicator" description="Include ADX trend-strength analysis.">
-                            <Toggle checked={ec.enableADX} onChange={(v) => updateEngineConfig("enableADX", v)} />
-                          </SettingRow>
-                          <SettingRow label="ATR Indicator" description="Include ATR volatility analysis.">
-                            <Toggle checked={ec.enableATR} onChange={(v) => updateEngineConfig("enableATR", v)} />
-                          </SettingRow>
-                          <SettingRow label="Stochastic Indicator" description="Include stochastic momentum analysis.">
-                            <Toggle checked={ec.enableStochastic} onChange={(v) => updateEngineConfig("enableStochastic", v)} />
-                          </SettingRow>
-                        </SettingsSection>
-                      </div>
-                    )}
-                  </div>
                 </div>
               ) : (
                   <p className="text-[12px] text-[var(--text-tertiary)] italic">Loading engine config...</p>
