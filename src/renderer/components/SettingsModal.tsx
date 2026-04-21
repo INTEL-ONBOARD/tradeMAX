@@ -990,27 +990,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         <div className={`relative flex-1 p-6 bg-transparent ${contentLoading ? "overflow-hidden" : "overflow-y-auto"}`}>
           {activeTab === "general" && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+              <div className="border-b border-[var(--border)] pb-2">
                 <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
                   User Interface
                 </h3>
-                <button
-                  disabled
-                  className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{
-                    background: saveStatus === "saved" ? "var(--color-profit-bg)" : "var(--color-info-bg)",
-                    color: saveStatus === "saved" ? "var(--color-profit)" : "var(--color-info)",
-                    border: `1px solid ${saveStatus === "saved" ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
-                  }}
-                >
-                  {saveStatus === "saving" ? (
-                    <><Loader2 size={11} className="animate-spin" /> Saving...</>
-                  ) : saveStatus === "saved" ? (
-                    <><CheckCircle size={11} /> Saved</>
-                  ) : (
-                    "Save"
-                  )}
-                </button>
               </div>
 
               <div className="space-y-4">
@@ -1062,7 +1045,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           {activeTab === "risk" && (
             <div className="space-y-4">
-              <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-2">
+              <div className="border-b border-[var(--border)] pb-2">
                 <div>
                   <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
                     Risk Profile
@@ -1071,21 +1054,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     These controls define how aggressive the agent is allowed to be. Lower values make trading more conservative.
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)]">
-                  {saveStatus === "saving" ? (
-                    <>
-                      <Loader2 size={11} className="animate-spin" />
-                      Saving...
-                    </>
-                  ) : saveStatus === "saved" ? (
-                    <>
-                      <CheckCircle size={11} />
-                      Saved
-                    </>
-                  ) : (
-                    "Auto-save on"
-                  )}
-                </span>
               </div>
               {rp ? (
                 <div className="space-y-4">
@@ -1190,7 +1158,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           {activeTab === "engine" && (
             <div className="space-y-4">
-              <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-2">
+              <div className="border-b border-[var(--border)] pb-2">
                 <div>
                   <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
                     Engine Configuration
@@ -1199,21 +1167,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     Only the controls that change live trading behavior are shown here. Advanced AI model routing and internal analysis tuning now stay on system defaults.
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)]">
-                  {saveStatus === "saving" ? (
-                    <>
-                      <Loader2 size={11} className="animate-spin" />
-                      Saving...
-                    </>
-                  ) : saveStatus === "saved" ? (
-                    <>
-                      <CheckCircle size={11} />
-                      Saved
-                    </>
-                  ) : (
-                    "Auto-save on"
-                  )}
-                </span>
               </div>
               {ec ? (
                 <div className="space-y-4">
@@ -1497,7 +1450,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         onClick={() => setShowAdvancedEngine((prev) => !prev)}
                         className="px-3 py-1.5 text-[11px] font-medium rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-overlay)]"
                       >
-                        {showAdvancedEngine ? "Hide Advanced" : "Show Advanced"}
+                        {showAdvancedEngine ? "Hide" : "Show"}
                       </button>
                     </div>
 
