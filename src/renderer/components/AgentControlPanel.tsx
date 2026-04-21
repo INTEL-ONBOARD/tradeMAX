@@ -48,9 +48,33 @@ export function AgentControlPanel() {
   };
 
   const isRunning = agentStatus.running;
+  const normalizedError = errorMessage
+    ? errorMessage.replace(/^Error invoking remote method '[^']+':\s*/i, "").replace(/^Error:\s*/i, "").trim()
+    : null;
+  const statusTitle = (() => {
+    if (normalizedError) return "AI Agent action failed.";
+    if (toggling) return "Updating agent state...";
+    if (!isRunning) return "AI Agent is not running.";
+    if (agentStatus.frozen) return "AI Agent paused by safety protection.";
+    if (autoPair) return "Scanning market and rotating to top pairs.";
+    return `Monitoring ${activeSymbol} and evaluating entries.`;
+  })();
+  const statusDetail = (() => {
+    if (normalizedError) return normalizedError;
+    if (toggling) return "Applying your latest command.";
+    if (!isRunning) return "Press Turn On to start live analysis.";
+    if (agentStatus.reason) return agentStatus.reason;
+    if (agentStatus.lastUpdatedAt) {
+      const ts = new Date(agentStatus.lastUpdatedAt);
+      if (!Number.isNaN(ts.getTime())) {
+        return `Last update ${ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      }
+    }
+    return "Listening to market data and running the AI decision loop.";
+  })();
 
   return (
-    <div className="flex flex-col items-center justify-center py-10 w-full mx-4 relative">
+    <div className="flex flex-col items-center justify-center py-10 pb-20 w-full mx-4 min-h-full relative">
       {/* Decorative Outer Dial Ring */}
       <div className="relative w-48 h-48 rounded-full border-[12px] border-[var(--bg-inset)] flex items-center justify-center mb-6 shadow-inner">
         {/* Dial Ticks (Visual representation) */}
@@ -103,12 +127,6 @@ export function AgentControlPanel() {
         {toggling ? "Processing..." : isRunning ? "Stop Agent" : "Turn On"}
       </button>
 
-      {errorMessage && (
-        <div className="mt-3 max-w-[340px] rounded-lg border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)] px-3 py-2 text-center">
-          <p className="text-[11px] font-medium text-[var(--color-loss)]">{errorMessage}</p>
-        </div>
-      )}
-
       <button onClick={handleKillSwitch} className={`mt-4 text-sm underline transition-colors ${confirmKill ? "text-[var(--color-loss)] font-bold" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"}`}>
         {confirmKill ? "Confirm Emergency Kill" : "Emergency Kill Switch"}
       </button>
@@ -159,9 +177,27 @@ export function AgentControlPanel() {
         </div>
       )}
 
-      <p className="text-[11px] text-[var(--text-tertiary)] mt-8 max-w-[280px] text-center">
-        Stop unnecessary apps/services for a better trading experience.
-      </p>
+      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 text-center pointer-events-none w-[320px]">
+        <p
+          className={`text-[12px] font-semibold ${
+            normalizedError
+              ? "text-[var(--color-loss)]"
+              : !isRunning
+              ? "text-[var(--text-secondary)]"
+              : agentStatus.frozen
+                ? "text-[var(--color-loss)]"
+                : "text-[var(--color-profit)]"
+          }`}
+        >
+          {statusTitle}
+        </p>
+        <div className="mt-1 flex items-center justify-center gap-1">
+          <span className="inline-block w-1 h-1 rounded-full bg-[var(--text-tertiary)] animate-pulse" />
+          <span className="inline-block w-1 h-1 rounded-full bg-[var(--text-tertiary)] animate-pulse" style={{ animationDelay: "0.2s" }} />
+          <span className="inline-block w-1 h-1 rounded-full bg-[var(--text-tertiary)] animate-pulse" style={{ animationDelay: "0.4s" }} />
+        </div>
+        <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">{statusDetail}</p>
+      </div>
 
       <AgentConfigModal isOpen={configOpen} onClose={() => setConfigOpen(false)} />
     </div>
