@@ -14,7 +14,7 @@ import * as auth from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
 import { tradeEngine } from "../services/tradeEngine.js";
 import { safetyService } from "../services/safetyService.js";
-import { alertService } from "../services/alertService.js";
+import { notificationService } from "../services/notificationService.js";
 import { TradeModel } from "../db/models/Trade.js";
 import { LogModel } from "../db/models/Log.js";
 import { saveSession, clearSession } from "./sessionManager.js";
@@ -81,12 +81,25 @@ export function registerIpcHandlers(): void {
   ipcHandlersRegistered = true;
 
   bindAccountWatcherCallbacks();
+  notificationService.setDispatch({
+    onInApp: (notification) => {
+      send(STREAM.NOTIFICATION, notification);
+    },
+    onNative: (notification) => {
+      try {
+        new Notification({ title: notification.title, body: notification.message }).show();
+      } catch {
+        // Ignore native delivery failures so in-app notifications still work.
+      }
+    },
+  });
 
   // ─── Auth ────────────────────────────────────────────
   ipcMain.handle(IPC.AUTH_REGISTER, async (_e, data) => {
     const result = await auth.register(data);
     saveSession(result.token);
     setCurrentUserId(result.session.userId);
+    notificationService.configure(result.settings.notificationSettings);
     await logger.info("AUTH", `User registered: ${result.session.email}`);
     return { session: result.session, settings: result.settings };
   });
@@ -95,6 +108,7 @@ export function registerIpcHandlers(): void {
     const result = await auth.login(data);
     saveSession(result.token);
     setCurrentUserId(result.session.userId);
+    notificationService.configure(result.settings.notificationSettings);
     await logger.info("AUTH", `User logged in: ${result.session.email}`);
 
     // Start the idle watcher for the selected exchange when the account can support it.
@@ -109,6 +123,7 @@ export function registerIpcHandlers(): void {
     if (tradeEngine.isRunning()) await tradeEngine.stop();
     await accountWatcher.stop();
     clearKeyCache();
+    notificationService.clearSettings();
     setCurrentUserId(null);
     clearSession();
     await logger.info("AUTH", "User logged out");
@@ -117,12 +132,19 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.AUTH_SESSION, async () => {
     const { getToken } = await import("./sessionManager.js");
     const token = getToken();
-    if (!token) return null;
+    if (!token) {
+      notificationService.clearSettings();
+      return null;
+    }
 
     const result = await auth.restoreSession(token);
-    if (!result) return null;
+    if (!result) {
+      notificationService.clearSettings();
+      return null;
+    }
 
     setCurrentUserId(result.session.userId);
+    notificationService.configure(result.settings.notificationSettings);
 
     if (result.settings.selectedExchange === "paper" || result.settings.hasBybitKeys) {
       accountWatcher.start(result.session.userId).catch(() => {});
@@ -237,6 +259,7 @@ export function registerIpcHandlers(): void {
     if (!currentUserId) throw new Error("Not authenticated");
     const parsed = settingsUpdateSchema.parse(data);
     const settings = await auth.updateSettings(currentUserId, parsed);
+    notificationService.configure(settings.notificationSettings);
 
     const shouldRestartWatcher =
       parsed.selectedExchange !== undefined ||
@@ -412,6 +435,18 @@ export function registerIpcHandlers(): void {
           createdAt: openTrade.createdAt.toISOString(),
           closedAt: openTrade.closedAt.toISOString(),
         });
+
+        notificationService.notify({
+          type: pnl >= 0 ? "trade" : "risk",
+          title: "Manual close completed",
+          message: `${openTrade.symbol} ${pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`}`,
+        });
+      } else {
+        notificationService.notify({
+          type: "trade",
+          title: "Manual close completed",
+          message: `${parsed.symbol} ${parsed.side} position closed`,
+        });
       }
 
       await logger.info("TRADE", `Manual position close: ${parsed.symbol} ${parsed.side} qty=${parsed.quantity}`, {
@@ -550,13 +585,11 @@ export function registerIpcHandlers(): void {
     });
 
     if (result) {
-      send(STREAM.NOTIFICATION, {
-        id: result.reviewId,
+      notificationService.notify({
         type: "ai",
         title: "Self review complete",
         message: result.summary,
-        read: false,
-        timestamp: result.createdAt,
+        desktop: "never",
       });
       await logger.info("AI", `Self review complete for ${result.symbol}`, {
         reviewId: result.reviewId,
@@ -618,36 +651,23 @@ export function registerIpcHandlers(): void {
       onAgentStatus: (status) => send(STREAM.AGENT_STATUS, status),
     });
 
-    // Wire alert service for in-app + native notifications
-    alertService.setCallback((alert) => {
-      send(STREAM.NOTIFICATION, {
-        id: Date.now().toString(),
-        type: alert.type,
-        title: alert.title,
-        message: alert.message,
-        read: false,
-        timestamp: new Date().toISOString(),
-      });
-      // Native OS notification for risk/system alerts only
-      if (alert.type === "risk" || alert.type === "system") {
-        new Notification({ title: alert.title, body: alert.message }).show();
-      }
-    });
-
     // Stop account watcher — agent's own streaming takes over
     await accountWatcher.stop();
     try {
       await tradeEngine.start(currentUserId, parsed.symbol);
       await auth.updateSettings(currentUserId, { agentModeEnabled: true });
     } catch (error) {
-      alertService.clearCallback();
+      notificationService.notify({
+        type: "system",
+        title: "Agent failed to start",
+        message: error instanceof Error ? error.message : String(error),
+      });
       accountWatcher.start(currentUserId).catch(() => {});
       throw error;
     }
   });
 
   ipcMain.handle(IPC.AGENT_STOP, async () => {
-    alertService.clearCallback();
     await tradeEngine.stop();
     if (currentUserId) {
       await auth.updateSettings(currentUserId, { agentModeEnabled: false });
@@ -657,7 +677,6 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC.AGENT_KILL_SWITCH, async () => {
-    alertService.clearCallback();
     await tradeEngine.killSwitch();
     if (currentUserId) {
       await auth.updateSettings(currentUserId, { agentModeEnabled: false });
@@ -668,6 +687,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.AGENT_RESET_FREEZE, async () => {
     safetyService.resetFreeze();
     await logger.info("SYSTEM", "User manually reset safety freeze");
+    notificationService.notify({
+      type: "system",
+      title: "Safety freeze cleared",
+      message: "The agent can be started again.",
+      desktop: "never",
+    });
   });
 
   // ─── Exchange Pairs ──────────────────────────────────
@@ -718,24 +743,41 @@ export function registerIpcHandlers(): void {
     const encryptedAIKey = user.openaiApiKey || user.claudeApiKey;
     const openaiApiKey = encryptedAIKey ? decrypt(encryptedAIKey, userSalt) : undefined;
 
-    const result = await runBacktest(
-      {
-        userId: currentUserId,
-        symbol: config.symbol,
-        exchange: "bybit",
-        mode: user.tradingMode,
-        startDate: config.startDate,
-        endDate: config.endDate,
-        startingBalance: config.startingBalance,
-        walkForwardSweep: config.walkForwardSweep ?? false,
-        riskProfile: user.riskProfile,
-        engineConfig: user.engineConfig,
-        openaiApiKey,
-      },
-      (progress) => send(STREAM.BACKTEST_PROGRESS, progress),
-    );
+    try {
+      const result = await runBacktest(
+        {
+          userId: currentUserId,
+          symbol: config.symbol,
+          exchange: "bybit",
+          mode: user.tradingMode,
+          startDate: config.startDate,
+          endDate: config.endDate,
+          startingBalance: config.startingBalance,
+          walkForwardSweep: config.walkForwardSweep ?? false,
+          riskProfile: user.riskProfile,
+          engineConfig: user.engineConfig,
+          openaiApiKey,
+        },
+        (progress) => send(STREAM.BACKTEST_PROGRESS, progress),
+      );
 
-    return result;
+      notificationService.notify({
+        type: "ai",
+        title: "Backtest complete",
+        message: `${config.symbol.toUpperCase()} finished with ${result.totalTrades} trades and ${result.totalPnl >= 0 ? `+$${result.totalPnl.toFixed(2)}` : `-$${Math.abs(result.totalPnl).toFixed(2)}`}`,
+        desktop: "never",
+      });
+
+      return result;
+    } catch (error) {
+      notificationService.notify({
+        type: "system",
+        title: "Backtest failed",
+        message: error instanceof Error ? error.message : String(error),
+        desktop: "never",
+      });
+      throw error;
+    }
   });
 
   // ─── Logs ────────────────────────────────────────────

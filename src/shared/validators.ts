@@ -46,6 +46,15 @@ export const openaiKeySchema = z.object({
   openaiApiKey: z.string().min(1),
 });
 
+const notificationSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  desktopEnabled: z.boolean().optional(),
+  trade: z.boolean().optional(),
+  risk: z.boolean().optional(),
+  system: z.boolean().optional(),
+  ai: z.boolean().optional(),
+});
+
 export const engineConfigSchema = z.object({
   tradingSymbol: z.string().min(1).max(20).toUpperCase().optional(),
   autoPairSelection: z.boolean().optional(),
@@ -94,6 +103,7 @@ export const settingsUpdateSchema = z.object({
   tradingMode: z.enum(["spot", "futures"]).optional(),
   agentModeEnabled: z.boolean().optional(),
   themePreference: z.enum(["dark", "light"]).optional(),
+  notificationSettings: notificationSettingsSchema.optional(),
   riskProfile: z
     .object({
       maxRiskPct: z.number().min(0.1).max(10).optional(),

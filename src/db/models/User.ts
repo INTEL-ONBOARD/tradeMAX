@@ -66,6 +66,14 @@ export interface IUser extends Document {
     enableMultiModelVoting: boolean;
     votingModels: string[];
   };
+  notificationSettings: {
+    enabled: boolean;
+    desktopEnabled: boolean;
+    trade: boolean;
+    risk: boolean;
+    system: boolean;
+    ai: boolean;
+  };
   agentModeEnabled: boolean;
   themePreference: "dark" | "light";
   createdAt: Date;
@@ -141,6 +149,14 @@ const userSchema = new Schema<IUser>(
       watchlist: { type: [String], default: [] },
       enableMultiModelVoting: { type: Boolean, default: false },
       votingModels: { type: [String], default: ["gpt-5.4-mini", "gpt-5.4-nano"] },
+    },
+    notificationSettings: {
+      enabled: { type: Boolean, default: true },
+      desktopEnabled: { type: Boolean, default: true },
+      trade: { type: Boolean, default: true },
+      risk: { type: Boolean, default: true },
+      system: { type: Boolean, default: true },
+      ai: { type: Boolean, default: true },
     },
     agentModeEnabled: { type: Boolean, default: false },
     themePreference: { type: String, enum: ["dark", "light"], default: "light" },

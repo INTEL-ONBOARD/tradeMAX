@@ -9,6 +9,7 @@ import { alertService } from "./alertService.js";
 import { logger } from "./loggerService.js";
 import { decrypt } from "./encryptionService.js";
 import { getUserDoc } from "./authService.js";
+import { notificationService } from "./notificationService.js";
 import { TradeModel, type ITrade } from "../db/models/Trade.js";
 import type {
   AgentCycleResult,
@@ -111,6 +112,7 @@ export class TradeEngine {
   private currentMode: "spot" | "futures" = "spot";
   private selectedExchange: "bybit" | "paper" = "paper";
   private streamedSymbol = "";
+  private suppressStopNotification = false;
 
   setCallbacks(cb: StreamCallback): void {
     this.callbacks = cb;
@@ -243,6 +245,11 @@ export class TradeEngine {
       "TRADE",
       `Agent started on ${this.symbol} (${user.selectedExchange} ${user.tradingMode}) with ${this.trackedSymbols.length} tracked symbols`,
     );
+    notificationService.notify({
+      type: "system",
+      title: "Agent started",
+      message: `${this.symbol} is now running in ${user.selectedExchange} ${user.tradingMode} mode`,
+    });
   }
 
   private startMarketStream(symbol: string): void {
@@ -283,11 +290,25 @@ export class TradeEngine {
     this.emitStatus();
     if (wasActive) {
       await logger.info("TRADE", "Agent stopped");
+      if (!this.suppressStopNotification) {
+        notificationService.notify({
+          type: "system",
+          title: "Agent stopped",
+          message: "Trading automation has been paused.",
+          desktop: "never",
+        });
+      }
     }
+    this.suppressStopNotification = false;
   }
 
   async killSwitch(): Promise<void> {
     await logger.error("SAFETY", "KILL SWITCH — executing emergency shutdown");
+    notificationService.notify({
+      type: "risk",
+      title: "Kill switch activated",
+      message: "Emergency shutdown triggered. Open positions are being closed.",
+    });
     const openTrades = await this.fetchManagedOpenTrades();
     if (this.exchange) {
       try {
@@ -302,6 +323,7 @@ export class TradeEngine {
       }
     }
     safetyService.activateKillSwitch();
+    this.suppressStopNotification = true;
     await this.stop();
   }
 
@@ -325,6 +347,14 @@ export class TradeEngine {
     if (!this.exchange) return null;
     try {
       const portfolio = await this.exchange.getBalance();
+      if (this.apiFailures > 0) {
+        notificationService.notify({
+          type: "system",
+          title: "Exchange connection restored",
+          message: `${this.selectedExchange} balance and account sync recovered.`,
+          desktop: "never",
+        });
+      }
       this.apiFailures = 0;
       this.callbacks.onPortfolio?.(portfolio);
       safetyService.updatePeakBalance(portfolio.totalBalance);
@@ -557,6 +587,10 @@ export class TradeEngine {
       await this.manageOpenTrades(openTrades, this.latestPrices);
       openTrades = await this.fetchManagedOpenTrades();
       const dailyRealizedLoss = await this.fetchDailyRealizedLoss();
+      const dailyLossLimit = portfolio.totalBalance * (this.riskProfile.maxDailyLossPct / 100);
+      if (dailyLossLimit > 0 && dailyRealizedLoss >= dailyLossLimit * 0.8) {
+        alertService.onDailyLossWarning(dailyRealizedLoss, dailyLossLimit);
+      }
       let openTradeCount = openTrades.length;
 
       for (const selection of this.leaderboard) {
@@ -697,6 +731,12 @@ export class TradeEngine {
           fillPrice,
           portfolioSlot,
         });
+        alertService.onTradeExecuted(
+          symbol,
+          decision.decision,
+          orderResult.quantity || validation.quantity,
+          fillPrice,
+        );
 
         openTrades.push(tradeDoc);
       }

@@ -60,6 +60,16 @@ export const RISK_DEFAULTS = {
   maxLeverage: 10,
 } as const;
 
+// ─── Notification Defaults ────────────────────────────
+export const NOTIFICATION_DEFAULTS = {
+  enabled: true,
+  desktopEnabled: true,
+  trade: true,
+  risk: true,
+  system: true,
+  ai: true,
+} as const;
+
 // ─── Trading Engine (fixed constants — not user-configurable) ──
 export const ENGINE = {
   PRICE_BUFFER_SIZE: 250,

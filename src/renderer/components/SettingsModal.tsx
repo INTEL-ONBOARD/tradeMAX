@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Modal } from "./Modal";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
-import { Settings, Shield, Edit3, Monitor, CheckCircle, Loader2, Eye, EyeOff } from "./icons";
+import { Settings, Shield, Edit3, Monitor, Bell, CheckCircle, Loader2, Eye, EyeOff } from "./icons";
 import type { ClosedPnlRecord, PortfolioSnapshot, Position, ProfileConfigRecord, UserSettings } from "../../shared/types";
 
 function useDebouncedCallback<T extends (...args: any[]) => any>(fn: T, delay: number): T {
@@ -100,11 +100,21 @@ function TextInput({
   );
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
     <button
+      type="button"
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`w-10 h-[22px] rounded-full relative transition-colors ${checked ? "bg-[var(--color-profit)]" : "bg-[var(--bg-inset)] border border-[var(--border)]"}`}
+      className={`w-10 h-[22px] rounded-full relative transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${checked ? "bg-[var(--color-profit)]" : "bg-[var(--bg-inset)] border border-[var(--border)]"}`}
     >
       <div
         className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "left-[22px]" : "left-[3px]"}`}
@@ -789,6 +799,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const tabs = [
     { id: "general", label: "General", icon: Settings },
+    { id: "notifications", label: "Notifications", icon: Bell },
     { id: "api",     label: "API & Auth", icon: Shield },
     { id: "risk",    label: "Risk Profile", icon: Edit3 },
     { id: "engine",  label: "Engine", icon: Monitor },
@@ -842,15 +853,33 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  const updateNotificationSettings = async (field: string, value: boolean) => {
+    setSaveStatus("saving");
+    try {
+      const updated = await window.api.invoke(IPC.SETTINGS_UPDATE, {
+        notificationSettings: { [field]: value },
+      }) as UserSettings;
+      if (updated) setSettings(updated);
+      showSaved();
+    } catch {
+      showError();
+    }
+  };
+
   const rp = settings?.riskProfile;
   const ec = settings?.engineConfig;
+  const ns = settings?.notificationSettings;
   const activeProfile = ec?.tradingProfile || "intraday";
+  const notificationsTabLoading = activeTab === "notifications" && !ns;
   const riskTabLoading = activeTab === "risk" && !rp;
   const engineTabLoading = activeTab === "engine" && !ec;
+  const notificationsTabLoadingLabel = "Loading notification preferences...";
   const engineTabLoadingLabel = "Loading engine configuration...";
   const riskTabLoadingLabel = "Loading risk profile...";
   const activeOverlayLabel = activeTab === "api"
     ? (apiTabLoading ? apiTabLoadingLabel : null)
+    : activeTab === "notifications"
+      ? (notificationsTabLoading ? notificationsTabLoadingLabel : null)
     : activeTab === "risk"
       ? (riskTabLoading ? riskTabLoadingLabel : null)
       : activeTab === "engine"
@@ -1036,6 +1065,99 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === "notifications" && (
+            <div className="space-y-4">
+              <div className="border-b border-[var(--border)] pb-2">
+                <div>
+                  <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
+                    Notifications
+                  </h3>
+                  <p className="text-[11px] text-[var(--text-tertiary)] mt-1 max-w-[32rem]">
+                    Choose which events appear in the bell panel and which ones are allowed to trigger desktop popups.
+                  </p>
+                </div>
+              </div>
+
+              {ns ? (
+                <div className="space-y-4">
+                  <SettingsSection
+                    title="Delivery"
+                    description="Set the overall notification behavior for the app."
+                  >
+                    <SettingRow
+                      label="Enable Notifications"
+                      description="Master switch for the in-app notification center and any desktop alerts."
+                    >
+                      <Toggle checked={ns.enabled} onChange={(v) => updateNotificationSettings("enabled", v)} />
+                    </SettingRow>
+                    <SettingRow
+                      label="Desktop Popups"
+                      description="Allow TradeMAX to show system-level popups in addition to the in-app bell feed."
+                    >
+                      <Toggle
+                        checked={ns.desktopEnabled}
+                        onChange={(v) => updateNotificationSettings("desktopEnabled", v)}
+                        disabled={!ns.enabled}
+                      />
+                    </SettingRow>
+                  </SettingsSection>
+
+                  <SettingsSection
+                    title="What To Show"
+                    description="Keep critical alerts on, and turn off lower-signal categories if you want a quieter experience."
+                  >
+                    <SettingRow
+                      label="Trading Activity"
+                      description="Orders opened, positions closed, and manual close confirmations."
+                    >
+                      <Toggle
+                        checked={ns.trade}
+                        onChange={(v) => updateNotificationSettings("trade", v)}
+                        disabled={!ns.enabled}
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="Risk & Safety"
+                      description="Daily loss warnings, safety freezes, stop-loss exits, and kill switch events."
+                    >
+                      <Toggle
+                        checked={ns.risk}
+                        onChange={(v) => updateNotificationSettings("risk", v)}
+                        disabled={!ns.enabled}
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="System Health"
+                      description="Agent start or stop, connection failures, reconnects, and account sync problems."
+                    >
+                      <Toggle
+                        checked={ns.system}
+                        onChange={(v) => updateNotificationSettings("system", v)}
+                        disabled={!ns.enabled}
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="AI & Reviews"
+                      description="AI trade signals, self-review completions, and backtest completions."
+                    >
+                      <Toggle
+                        checked={ns.ai}
+                        onChange={(v) => updateNotificationSettings("ai", v)}
+                        disabled={!ns.enabled}
+                      />
+                    </SettingRow>
+                  </SettingsSection>
+
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] text-[var(--text-tertiary)] leading-relaxed">
+                    The bell panel keeps the latest 50 alerts for the current session. If desktop popups still do not appear, check the OS notification permission for TradeMAX.
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[12px] text-[var(--text-tertiary)] italic">Loading notification preferences...</p>
+              )}
             </div>
           )}
 

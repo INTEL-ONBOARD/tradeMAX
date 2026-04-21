@@ -4,6 +4,7 @@ import type { PaperExchangeService } from "../services/paperExchangeService.js";
 import { decrypt } from "../services/encryptionService.js";
 import { getUserDoc } from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
+import { notificationService } from "../services/notificationService.js";
 import { resolvePreferredTradingSymbol } from "../shared/engineConfigUtils.js";
 import type { PortfolioSnapshot, Position, MarketTick } from "../shared/types.js";
 
@@ -92,6 +93,12 @@ class AccountWatcher {
       await logger.info("SYSTEM", `Account watcher started for ${user.selectedExchange} (${symbol})`);
     } catch (err) {
       await logger.warn("SYSTEM", `Account watcher failed to start: ${err}`);
+      notificationService.notify({
+        type: "system",
+        title: "Account sync unavailable",
+        message: err instanceof Error ? err.message : String(err),
+        desktop: "never",
+      });
       this.cleanup();
     }
   }

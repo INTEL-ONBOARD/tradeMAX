@@ -4,7 +4,7 @@ import { User, type IUser } from "../db/models/User.js";
 import { registerSchema, loginSchema } from "../shared/validators.js";
 import { encrypt, generateUserSalt } from "./encryptionService.js";
 import type { UserSession, UserSettings } from "../shared/types.js";
-import { RISK_DEFAULTS, ENGINE_DEFAULTS } from "../shared/constants.js";
+import { RISK_DEFAULTS, ENGINE_DEFAULTS, NOTIFICATION_DEFAULTS } from "../shared/constants.js";
 import { ConfigSnapshotModel } from "../db/models/ConfigSnapshot.js";
 
 const SALT_ROUNDS = 12;
@@ -60,6 +60,7 @@ function toSettings(user: IUser): UserSettings {
     tradingMode: user.tradingMode,
     riskProfile: user.riskProfile,
     engineConfig: user.engineConfig,
+    notificationSettings: user.notificationSettings ?? { ...NOTIFICATION_DEFAULTS },
     agentModeEnabled: user.agentModeEnabled,
     themePreference: user.themePreference,
     hasOpenAIKey,
@@ -82,6 +83,7 @@ export async function register(data: unknown): Promise<{ session: UserSession; t
     encryptionSalt: generateUserSalt(),
     riskProfile: { ...RISK_DEFAULTS },
     engineConfig: { ...ENGINE_DEFAULTS },
+    notificationSettings: { ...NOTIFICATION_DEFAULTS },
   });
 
   const token = jwt.sign({ userId: user._id.toString() }, getJwtSecret(), { expiresIn: JWT_EXPIRY });
@@ -149,6 +151,12 @@ export async function updateSettings(userId: string, updates: Record<string, unk
   if (patch.tradingMode !== undefined) user.tradingMode = patch.tradingMode;
   if (patch.agentModeEnabled !== undefined) user.agentModeEnabled = patch.agentModeEnabled;
   if (patch.themePreference !== undefined) user.themePreference = patch.themePreference;
+  if (patch.notificationSettings) {
+    if (!user.notificationSettings) {
+      user.notificationSettings = { ...NOTIFICATION_DEFAULTS };
+    }
+    Object.assign(user.notificationSettings, patch.notificationSettings);
+  }
   if (patch.riskProfile) {
     Object.assign(user.riskProfile, patch.riskProfile);
   }

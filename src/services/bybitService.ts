@@ -1,5 +1,6 @@
 import { RestClientV5, WebsocketClient } from "bybit-api";
 import { logger } from "./loggerService.js";
+import { notificationService } from "./notificationService.js";
 import type {
   ExchangeKeys,
   ExchangeSymbolMetadata,
@@ -16,6 +17,7 @@ export class BybitService {
   private mode: "spot" | "futures" = "spot";
   private apiKey = "";
   private apiSecret = "";
+  private accountStreamDisconnected = false;
 
   async initialize(keys: ExchangeKeys, mode: "spot" | "futures"): Promise<void> {
     if (!keys.apiKey || !keys.apiSecret) {
@@ -389,10 +391,28 @@ export class BybitService {
 
     this.accountWsClient.on("reconnected", () => {
       logger.info("SYSTEM", "Bybit account stream reconnected successfully");
+      if (this.accountStreamDisconnected) {
+        notificationService.notify({
+          type: "system",
+          title: "Live account stream restored",
+          message: "Bybit account updates are flowing again.",
+          desktop: "never",
+        });
+      }
+      this.accountStreamDisconnected = false;
     });
 
     this.accountWsClient.on("close", () => {
       logger.warn("SYSTEM", "Bybit account stream closed — library will attempt auto-reconnect");
+      if (!this.accountStreamDisconnected) {
+        notificationService.notify({
+          type: "system",
+          title: "Live account stream interrupted",
+          message: "Bybit account updates paused. Auto-reconnect is in progress.",
+          desktop: "never",
+        });
+      }
+      this.accountStreamDisconnected = true;
     });
   }
 
@@ -405,5 +425,6 @@ export class BybitService {
       }
       this.accountWsClient = null;
     }
+    this.accountStreamDisconnected = false;
   }
 }

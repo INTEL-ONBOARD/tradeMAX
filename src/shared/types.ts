@@ -56,10 +56,20 @@ export interface UserSettings {
   tradingMode: "spot" | "futures";
   riskProfile: RiskProfile;
   engineConfig: EngineConfig;
+  notificationSettings: NotificationSettings;
   agentModeEnabled: boolean;
   themePreference: "dark" | "light";
   hasOpenAIKey: boolean;
   hasBybitKeys: boolean;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  desktopEnabled: boolean;
+  trade: boolean;
+  risk: boolean;
+  system: boolean;
+  ai: boolean;
 }
 
 export interface RiskProfile {
