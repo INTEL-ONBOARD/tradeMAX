@@ -112,12 +112,14 @@ function Toggle({
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`w-10 h-[22px] rounded-full relative transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${checked ? "bg-[var(--color-profit)]" : "bg-[var(--bg-inset)] border border-[var(--border)]"}`}
+      className={`w-10 h-6 rounded-full relative transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${checked ? "bg-[var(--color-info)] border border-[var(--color-info)]" : "bg-[var(--bg-inset)] border border-[var(--border)]"}`}
     >
       <div
-        className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "left-[22px]" : "left-[3px]"}`}
+        className={`absolute left-[2px] top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${checked ? "translate-x-4" : "translate-x-0"}`}
       />
     </button>
   );
@@ -157,7 +159,7 @@ function SegmentedControl({
             key={opt}
             type="button"
             onClick={() => onChange(opt)}
-            className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${active ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+            className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${active ? "bg-[var(--color-info)] text-white shadow-sm" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
           >
             {labels?.[opt] ?? opt}
           </button>
@@ -212,7 +214,7 @@ function SliderInput({
           debouncedOnChange(next);
         }}
         className="w-full cursor-pointer"
-        style={{ accentColor: "var(--primary-500)" }}
+        style={{ accentColor: "var(--color-info)" }}
       />
     </div>
   );
@@ -700,7 +702,7 @@ function APIKeysTab({
                   onClick={() => void handleExchangeChange(exchange)}
                   disabled={switchingExchange || agentRunning}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    active ? "bg-[var(--bg-overlay)] text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]"
+                    active ? "bg-[var(--color-info)] text-white shadow-sm" : "text-[var(--text-secondary)]"
                   }`}
                 >
                   {label}
@@ -1061,7 +1063,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           } catch { showError(); }
                         }
                       }}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${theme === "dark" ? "bg-[var(--bg-overlay)] text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${theme === "dark" ? "bg-[var(--color-info)] text-white shadow-sm" : "text-[var(--text-secondary)]"}`}
                     >
                       Dark
                     </button>
@@ -1076,7 +1078,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           } catch { showError(); }
                         }
                       }}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${theme === "light" ? "bg-[var(--bg-overlay)] text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${theme === "light" ? "bg-[var(--color-info)] text-white shadow-sm" : "text-[var(--text-secondary)]"}`}
                     >
                       Light
                     </button>

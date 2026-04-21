@@ -81,7 +81,7 @@ function PairPickerModal({
             className="w-full px-3 py-2 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--text-secondary)]"
           />
           <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">
-            Live list refreshes every 10s
+            Live list updates every 1s
           </p>
         </div>
         <div className="flex-1 overflow-y-auto p-2 bg-[var(--bg-base)]">
@@ -288,7 +288,7 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
     void fetchPairsForMode(mode);
     const interval = window.setInterval(() => {
       void fetchPairsForMode(mode);
-    }, 10000);
+    }, 1000);
     return () => window.clearInterval(interval);
   }, [isOpen, pairPickerOpen, autoPair, mode, settings?.hasOpenAIKey, fetchPairsForMode]);
 
@@ -344,7 +344,7 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title="Agent Configuration" width="540px" height="auto">
+      <Modal isOpen={isOpen} onClose={onClose} title="Agent Configuration" width="459px" height="auto">
         <div className="relative flex flex-col">
         {/* Loading state while checking configuration */}
         {configStatus === null && (
@@ -360,43 +360,45 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
         {configStatus === false && <NotConfiguredOverlay onClose={onClose} />}
 
         <div className="p-3 space-y-2">
-          <section className="space-y-2">
+          <section className="space-y-1.5">
             <div>
               <p className="text-[12px] font-semibold text-[var(--text-primary)]">Mode & Strategy</p>
             </div>
 
-            <div className="space-y-1.5">
-              <span className="text-[11px] text-[var(--text-secondary)]">Trading Mode</span>
-              <div className="grid grid-cols-2 gap-2">
-                {(["spot", "futures"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => handleModeChange(m)}
-                    className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium uppercase ${mode === m ? "border-[var(--text-primary)] bg-[var(--bg-overlay)] text-[var(--text-primary)]" : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"}`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <span className="text-[11px] text-[var(--text-secondary)]">Strategy Style</span>
-              <div className="grid grid-cols-3 gap-2">
-                {(Object.keys(PRESETS) as AggressivenessPreset[]).map((key) => {
-                  const active = preset === key;
-                  return (
+            <div className="grid grid-cols-2 gap-2 items-end">
+              <div className="space-y-1">
+                <span className="text-[10px] text-[var(--text-secondary)]">Trading Mode</span>
+                <div className="inline-flex w-full p-0.5 rounded-lg border border-[var(--border)] bg-[var(--bg-inset)]">
+                  {(["spot", "futures"] as const).map((m) => (
                     <button
-                      key={key}
+                      key={m}
                       type="button"
-                      onClick={() => setPreset(key)}
-                      className={`rounded-lg border px-2 py-1.5 text-[11px] font-medium text-center ${active ? "border-[var(--text-primary)] bg-[var(--bg-overlay)] text-[var(--text-primary)]" : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"}`}
+                      onClick={() => handleModeChange(m)}
+                      className={`flex-1 px-2 py-1.5 text-[10px] font-medium uppercase rounded-md transition-colors ${mode === m ? "bg-[var(--color-info)] text-white shadow-sm" : "text-[var(--text-secondary)]"}`}
                     >
-                      {PRESETS[key].label}
+                      {m}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[10px] text-[var(--text-secondary)]">Strategy Style</span>
+                <div className="inline-flex w-full p-0.5 rounded-lg border border-[var(--border)] bg-[var(--bg-inset)]">
+                  {(Object.keys(PRESETS) as AggressivenessPreset[]).map((key) => {
+                    const active = preset === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setPreset(key)}
+                        className={`flex-1 px-1.5 py-1.5 text-[10px] font-medium text-center rounded-md transition-colors ${active ? "bg-[var(--color-info)] text-white shadow-sm" : "text-[var(--text-secondary)]"}`}
+                      >
+                        {PRESETS[key].label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </section>
@@ -409,41 +411,43 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
               </p>
             </div>
 
-            <div className="inline-flex p-1 rounded-lg border border-[var(--border)] bg-[var(--bg-inset)]">
-              <button
-                type="button"
-                onClick={() => setAutoPair(true)}
-                className={`px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${autoPair ? "bg-[var(--bg-overlay)] text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}
-              >
-                Auto Pair
-              </button>
-              <button
-                type="button"
-                onClick={() => setAutoPair(false)}
-                className={`px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${!autoPair ? "bg-[var(--bg-overlay)] text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}
-              >
-                Manual Pair
-              </button>
-            </div>
-
-            {autoPair ? (
-              <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-[11px] text-[var(--text-secondary)]">
-                Running Agent Mode
+            <div className="grid grid-cols-[auto,1fr] gap-2 items-center">
+              <div className="inline-flex p-1 rounded-lg border border-[var(--border)] bg-[var(--bg-inset)]">
+                <button
+                  type="button"
+                  onClick={() => setAutoPair(true)}
+                  className={`px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${autoPair ? "bg-[var(--color-info)] text-white shadow-sm" : "text-[var(--text-secondary)]"}`}
+                >
+                  Auto Pair
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAutoPair(false)}
+                  className={`px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${!autoPair ? "bg-[var(--color-info)] text-white shadow-sm" : "text-[var(--text-secondary)]"}`}
+                >
+                  Manual Pair
+                </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setPairPickerOpen(true)}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-left transition-colors hover:border-[var(--text-secondary)]"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[11px] font-medium text-[var(--text-primary)] truncate">{pair || "Select trading pair"}</span>
-                  <span className="text-[10px] text-[var(--text-tertiary)] whitespace-nowrap">
-                    {pairsLoading ? "Loading..." : formatPairPrice(exchangePairPrices[pair])}
-                  </span>
+
+              {autoPair ? (
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-[11px] text-[var(--text-secondary)]">
+                  Running Agent Mode
                 </div>
-              </button>
-            )}
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPairPickerOpen(true)}
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-left transition-colors hover:border-[var(--text-secondary)]"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-medium text-[var(--text-primary)] truncate">{pair || "Select trading pair"}</span>
+                    <span className="text-[10px] text-[var(--text-tertiary)] whitespace-nowrap">
+                      {pairsLoading ? "Loading..." : formatPairPrice(exchangePairPrices[pair])}
+                    </span>
+                  </div>
+                </button>
+              )}
+            </div>
           </section>
 
           <section className="space-y-2 border-t border-[var(--border)] pt-2.5">
@@ -466,7 +470,8 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
                   onChange={(e) => setRiskPct(parseFloat(e.target.value))}
                   className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
                   style={{
-                    background: `linear-gradient(to right, var(--text-primary) 0%, var(--text-primary) ${riskFillPct}%, var(--bg-inset) ${riskFillPct}%, var(--bg-inset) 100%)`,
+                    accentColor: "var(--color-info)",
+                    background: `linear-gradient(to right, var(--color-info) 0%, var(--color-info) ${riskFillPct}%, var(--bg-inset) ${riskFillPct}%, var(--bg-inset) 100%)`,
                   }}
                 />
                 <div className="flex items-center justify-between text-[10px] text-[var(--text-tertiary)]">
@@ -490,7 +495,8 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
                   onChange={(e) => setMaxPositions(clamp(parseInt(e.target.value, 10), 1, 10))}
                   className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
                   style={{
-                    background: `linear-gradient(to right, var(--text-primary) 0%, var(--text-primary) ${((maxPositions - 1) / 9) * 100}%, var(--bg-inset) ${((maxPositions - 1) / 9) * 100}%, var(--bg-inset) 100%)`,
+                    accentColor: "var(--color-info)",
+                    background: `linear-gradient(to right, var(--color-info) 0%, var(--color-info) ${((maxPositions - 1) / 9) * 100}%, var(--bg-inset) ${((maxPositions - 1) / 9) * 100}%, var(--bg-inset) 100%)`,
                   }}
                 />
                 <div className="flex items-center justify-between text-[10px] text-[var(--text-tertiary)]">
