@@ -10,21 +10,27 @@ export function AgentControlPanel() {
   const [confirmKill, setConfirmKill] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const settings = useAppStore((s) => s.settings);
   const symbol = settings?.engineConfig?.tradingSymbol || "BTCUSDT";
   const autoPair = settings?.engineConfig?.autoPairSelection || false;
   const profile = settings?.engineConfig?.tradingProfile || "intraday";
-  const activeSymbol = autoPair ? (marketTick?.symbol || symbol) : symbol;
+  const activeSymbols = agentStatus.activeSymbols ?? [];
+  const activeSymbol = autoPair ? (marketTick?.symbol || activeSymbols[0] || symbol) : symbol;
+  const leaderboard = (agentStatus.leaderboard ?? []).slice(0, 3);
 
   const handleToggleAgent = async () => {
     setToggling(true);
+    setErrorMessage(null);
     try {
       if (agentStatus.running) {
         await window.api.invoke(IPC.AGENT_STOP);
       } else {
         await window.api.invoke(IPC.AGENT_START, { symbol });
       }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to change agent state");
     } finally {
       setToggling(false);
     }
@@ -73,6 +79,11 @@ export function AgentControlPanel() {
         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--bg-inset)] text-[var(--text-secondary)] border border-[var(--border)]">
           {autoPair ? `AUTO ${activeSymbol}` : activeSymbol}
         </span>
+        {activeSymbols.length > 1 && (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--color-info-bg)] text-[var(--color-info)] border border-[var(--color-info-border)]">
+            {activeSymbols.length} SYMBOLS
+          </span>
+        )}
         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--bg-inset)] text-[var(--text-secondary)] border border-[var(--border)]">
           {profile.toUpperCase()}
         </span>
@@ -99,6 +110,12 @@ export function AgentControlPanel() {
         {toggling ? "Processing..." : isRunning ? "Stop Agent" : "Turn On"}
       </button>
 
+      {errorMessage && (
+        <div className="mt-3 max-w-[340px] rounded-lg border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)] px-3 py-2 text-center">
+          <p className="text-[11px] font-medium text-[var(--color-loss)]">{errorMessage}</p>
+        </div>
+      )}
+
       <button onClick={handleKillSwitch} className={`mt-4 text-sm underline transition-colors ${confirmKill ? "text-[var(--color-loss)] font-bold" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"}`}>
         {confirmKill ? "Confirm Emergency Kill" : "Emergency Kill Switch"}
       </button>
@@ -110,6 +127,36 @@ export function AgentControlPanel() {
         </div>
       )}
       
+      {leaderboard.length > 0 && (
+        <div className="mt-6 w-full max-w-[340px] rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+          <p className="text-[11px] font-semibold tracking-wider text-[var(--text-secondary)] uppercase mb-2">
+            Portfolio Ranking
+          </p>
+          <div className="space-y-2">
+            {leaderboard.map((entry, index) => (
+              <div key={entry.symbol} className="flex items-center justify-between rounded-lg bg-[var(--bg-inset)] px-3 py-2">
+                <div>
+                  <p className="text-[12px] font-semibold text-[var(--text-primary)]">
+                    {index + 1}. {entry.symbol}
+                  </p>
+                  <p className="text-[10px] text-[var(--text-tertiary)]">
+                    {entry.reason}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] font-semibold text-[var(--text-primary)]">
+                    {(entry.winRate * 100).toFixed(0)}%
+                  </p>
+                  <p className="text-[10px] text-[var(--text-tertiary)]">
+                    {entry.sampleSize} trades
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p className="text-[11px] text-[var(--text-tertiary)] mt-8 max-w-[280px] text-center">
         Stop unnecessary apps/services for a better trading experience.
       </p>

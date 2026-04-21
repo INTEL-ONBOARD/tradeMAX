@@ -1,6 +1,13 @@
 import { RestClientV5, WebsocketClient } from "bybit-api";
 import { logger } from "./loggerService.js";
-import type { PortfolioSnapshot, Position, OrderResult, MarketTick, ExchangeKeys } from "../shared/types.js";
+import type {
+  ExchangeKeys,
+  ExchangeSymbolMetadata,
+  MarketTick,
+  OrderResult,
+  PortfolioSnapshot,
+  Position,
+} from "../shared/types.js";
 
 export class BybitService {
   private rest: RestClientV5 | null = null;
@@ -215,6 +222,43 @@ export class BybitService {
       .filter((i: { status: string; quoteCoin: string }) => i.status === "Trading" && i.quoteCoin === "USDT")
       .map((i: { symbol: string }) => i.symbol)
       .sort();
+  }
+
+  async getSymbolMetadata(symbols?: string[]): Promise<ExchangeSymbolMetadata[]> {
+    if (!this.rest) throw new Error("Bybit not initialized");
+
+    const category = this.getCategory();
+    const { result } = await this.rest.getInstrumentsInfo({ category, limit: 1000 });
+    const allowed = symbols && symbols.length > 0
+      ? new Set(symbols.map((symbol) => symbol.toUpperCase()))
+      : null;
+
+    return (result.list ?? [])
+      .filter((item: any) => item.status === "Trading" && item.quoteCoin === "USDT")
+      .filter((item: any) => !allowed || allowed.has(String(item.symbol).toUpperCase()))
+      .map((item: any): ExchangeSymbolMetadata => {
+        const lotSize = item.lotSizeFilter ?? {};
+        const priceFilter = item.priceFilter ?? {};
+        const qtyStep =
+          parseFloat(lotSize.qtyStep ?? lotSize.basePrecision ?? "0") ||
+          parseFloat(lotSize.minOrderQty ?? "0") ||
+          0.001;
+        const minOrderQty = parseFloat(lotSize.minOrderQty ?? "0") || qtyStep;
+        const minNotionalUsd =
+          parseFloat(lotSize.minOrderAmt ?? lotSize.minNotionalValue ?? "0") ||
+          parseFloat(lotSize.minOrderQty ?? "0") * parseFloat(item.lastPrice ?? "0") ||
+          5;
+
+        return {
+          symbol: String(item.symbol).toUpperCase(),
+          mode: this.mode,
+          qtyStep,
+          minOrderQty,
+          minNotionalUsd,
+          priceTick: parseFloat(priceFilter.tickSize ?? "0") || 0.01,
+          supportsShorts: this.mode === "futures",
+        };
+      });
   }
 
   startTickerStream(symbol: string, callback: (tick: MarketTick) => void, _maxRetries?: number): void {

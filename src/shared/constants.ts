@@ -76,12 +76,15 @@ export const ENGINE = {
 // ─── User-configurable engine defaults ─────────────────
 export const ENGINE_DEFAULTS = {
   tradingSymbol: "BTCUSDT",
-  autoPairSelection: false,
+  autoPairSelection: true,
+  candidateSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT"] as readonly string[],
   tradingProfile: "intraday" as const,
   loopIntervalSec: 8,
   candleTimeframe: "1m" as const,
   maxSlippagePct: 0.5,
   tradeCooldownSec: 30,
+  maxConcurrentSymbols: 2,
+  symbolReentryCooldownSec: 120,
   aiRetryCount: 2,
   aiModel: "gpt-5.4-mini",
   stageModels: {
@@ -92,6 +95,9 @@ export const ENGINE_DEFAULTS = {
   },
   memoryRetrievalCount: 5,
   memoryLookbackDays: 45,
+  performanceLookbackDays: 21,
+  minSymbolSampleSize: 4,
+  minSymbolWinRate: 0.5,
   critiqueStrictness: "balanced" as const,
   holdTimeBias: "balanced" as const,
   exitStylePreference: "balanced" as const,

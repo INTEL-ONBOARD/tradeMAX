@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { LogModel } from "../db/models/Log.js";
 import type { LogLevel, LogCategory, LogEntry } from "../shared/types.js";
+import { safeProcessLog } from "../shared/processDiagnostics.js";
 
 class LoggerService extends EventEmitter {
   private userId: string | null = null;
@@ -36,7 +37,7 @@ class LoggerService extends EventEmitter {
           timestamp: new Date(),
         });
       } catch (err) {
-        console.error("[Logger] Failed to persist log:", err);
+        safeProcessLog("LOGGER", "Failed to persist log", err);
       }
     }
   }

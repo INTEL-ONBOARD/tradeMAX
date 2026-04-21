@@ -3,14 +3,17 @@ import path from "node:path";
 import dotenv from "dotenv";
 import { connectMongo } from "../db/mongoConnection.js";
 import { registerIpcHandlers, setMainWindow } from "./ipc.js";
+import { installMainProcessCrashGuards, safeProcessLog } from "../shared/processDiagnostics.js";
 
 dotenv.config();
 const isDev = process.env.VITE_DEV_SERVER_URL !== undefined;
+const shouldOpenDevTools =
+  isDev && ["1", "true", "yes"].includes((process.env.TRADEMAX_OPEN_DEVTOOLS ?? "").toLowerCase());
 
-let mainWindow: BrowserWindow | null = null;
+installMainProcessCrashGuards();
 
 async function createWindow(): Promise<void> {
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 1000,
     height: 700,
     resizable: false,
@@ -26,18 +29,16 @@ async function createWindow(): Promise<void> {
     },
   });
 
-  setMainWindow(mainWindow);
+  setMainWindow(window);
 
   if (isDev) {
-    await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL!);
-    mainWindow.webContents.openDevTools({ mode: "detach" });
+    await window.loadURL(process.env.VITE_DEV_SERVER_URL!);
+    if (shouldOpenDevTools) {
+      window.webContents.openDevTools({ mode: "detach" });
+    }
   } else {
-    await mainWindow.loadFile(path.join(__dirname, "../../renderer/index.html"));
+    await window.loadFile(path.join(__dirname, "../../renderer/index.html"));
   }
-
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
 }
 
 app.whenReady().then(async () => {
@@ -47,7 +48,7 @@ app.whenReady().then(async () => {
     await connectMongo(mongoUri);
     registerIpcHandlers();
   } catch (err) {
-    console.error("[FATAL] MongoDB connection failed:", err);
+    safeProcessLog("FATAL", "MongoDB connection failed", err);
     app.quit();
     return;
   }
@@ -61,6 +62,6 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    void createWindow();
   }
 });

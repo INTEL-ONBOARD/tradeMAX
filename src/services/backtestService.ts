@@ -11,11 +11,13 @@ import type {
   PortfolioSnapshot,
   Position,
   RegimeState,
+  RiskProfile,
   TradingProfile,
   WalkForwardEvaluation,
   WalkForwardFoldResult,
 } from "../shared/types.js";
 import { ENGINE, TRADING_PROFILE_DEFAULTS } from "../shared/constants.js";
+import { buildExecutionValidation } from "./executionValidationService.js";
 import { buildReplayMarketSnapshot } from "./marketSnapshotService.js";
 import { runAIPipeline } from "./aiPipelineService.js";
 import { logger } from "./loggerService.js";
@@ -503,6 +505,7 @@ async function runReplayWindow(args: {
   symbol: string;
   mode: CandleMode;
   profile: TradingProfile;
+  riskProfile: RiskProfile;
   engineConfig: EngineConfig;
   candles: CandleBar[];
   window: ReplayWindow;
@@ -651,34 +654,36 @@ async function runReplayWindow(args: {
     simulation.latencySum += cycle.latencyMs.total;
 
     const decision = cycle.finalDecision;
-    const isReady = cycle.status === "READY" && decision.decision !== "HOLD";
-    const contractValid =
-      decision.decision === "HOLD" ||
-      !decision.entry ||
-      !decision.stop_loss ||
-      !decision.take_profit
-        ? false
-        : decision.decision === "BUY"
-          ? decision.stop_loss < decision.entry && decision.take_profit > decision.entry
-          : decision.stop_loss > decision.entry && decision.take_profit < decision.entry;
+    const dayStart = new Date(candle.timestamp);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const dailyRealizedLoss = simulation.trades
+      .filter((trade) => new Date(trade.exitTime).getTime() >= dayStart.getTime())
+      .reduce((sum, trade) => sum + (trade.pnl < 0 ? Math.abs(trade.pnl) : 0), 0);
+    const validation = buildExecutionValidation({
+      decision,
+      snapshot,
+      riskProfile: args.riskProfile,
+      engineConfig: buildProfileEngineConfig(args.engineConfig, args.profile),
+      desiredSizeUsd: cycle.executionReview.adjustedSizeUsd,
+      requestedLeverage: cycle.executionReview.adjustedLeverage,
+      desiredTrailingStopPct: cycle.executionReview.trailingStopPct,
+      metadata: {
+        symbol: args.symbol.toUpperCase(),
+        mode: args.mode,
+        qtyStep: 0.001,
+        minOrderQty: 0.001,
+        minNotionalUsd: 5,
+        priceTick: 0.01,
+        supportsShorts: args.mode === "futures",
+      },
+      openTradeCount: openTrade ? 1 : 0,
+      openTradesForSymbol: openTrade ? 1 : 0,
+      dailyRealizedLoss,
+      peakBalance: Math.max(...simulation.equityCurve),
+      selection: null,
+    });
 
-    const entryDeviation = snapshot.currentPrice > 0
-      ? Math.abs((decision.entry - snapshot.currentPrice) / snapshot.currentPrice) * 100
-      : 0;
-    const leverage = Math.min(Math.max(cycle.executionReview.adjustedLeverage, 1), 20);
-    const sizeUsd = cycle.executionReview.adjustedSizeUsd;
-    const maxSafeNotional = Math.max(0, equity * leverage);
-    const quantity = Number((sizeUsd / Math.max(decision.entry || currentPrice, 1)).toFixed(6));
-
-    if (
-      !isReady ||
-      !contractValid ||
-      entryDeviation > 3 ||
-      !Number.isFinite(quantity) ||
-      quantity <= 0 ||
-      sizeUsd <= 0 ||
-      sizeUsd > maxSafeNotional
-    ) {
+    if (cycle.status !== "READY" || decision.decision === "HOLD" || !validation.approved) {
       simulation.rejectedCount += 1;
       updateProgress(index - args.window.testStartIndex + 1, `Evaluated ${args.profile} window${args.window.fold ? ` #${args.window.fold}` : ""}`);
       continue;
@@ -697,12 +702,12 @@ async function runReplayWindow(args: {
     openTrade = {
       side: tradeSide,
       entryPrice: fillPrice,
-      quantity,
+      quantity: validation.quantity,
       openedAt: new Date(candle.timestamp).toISOString(),
       openedIndex: index,
       stopLoss: cycle.executionReview.stopLoss,
       takeProfit: cycle.executionReview.takeProfit,
-      trailingStopPct: cycle.executionReview.trailingStopPct,
+      trailingStopPct: validation.appliedTrailingStopPct,
       maxHoldBars,
       bestPrice: fillPrice,
       worstPrice: fillPrice,
@@ -884,7 +889,7 @@ export async function runBacktest(
     userId: string;
     exchange: "bybit";
     mode: CandleMode;
-    riskProfile: unknown;
+    riskProfile: RiskProfile;
     engineConfig: EngineConfig;
     openaiApiKey?: string;
   },
@@ -928,6 +933,7 @@ export async function runBacktest(
     symbol: args.symbol.toUpperCase(),
     mode: args.mode,
     profile,
+    riskProfile: args.riskProfile,
     engineConfig: args.engineConfig,
     candles,
     window: baseWindow,
@@ -1019,6 +1025,7 @@ export async function runBacktest(
           symbol: args.symbol.toUpperCase(),
           mode: args.mode,
           profile: sweepProfile,
+          riskProfile: args.riskProfile,
           engineConfig: args.engineConfig,
           candles: sweepCandles,
           window,

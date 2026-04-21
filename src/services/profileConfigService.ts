@@ -15,6 +15,7 @@ function mergeEngineConfig(base: EngineConfig, patch: EngineConfigPatch): Engine
       ...base.stageModels,
       ...(patch.stageModels ?? {}),
     },
+    candidateSymbols: patch.candidateSymbols !== undefined ? [...patch.candidateSymbols] : [...base.candidateSymbols],
     watchlist: patch.watchlist !== undefined ? [...patch.watchlist] : [...base.watchlist],
     votingModels: patch.votingModels !== undefined ? [...patch.votingModels] : [...base.votingModels],
   };

@@ -24,6 +24,7 @@ import { mapExchangeError } from "./exchangeErrors.js";
 import { accountWatcher } from "./accountWatcher.js";
 import { runBacktest } from "../services/backtestService.js";
 import { runSelfReview } from "../services/aiPipelineService.js";
+import { buildManagedPositions } from "../services/managedPositionService.js";
 import {
   applyProfileConfig,
   deleteProfileConfig,
@@ -31,8 +32,12 @@ import {
   saveProfileConfig,
 } from "../services/profileConfigService.js";
 import type { BacktestRunInput } from "../shared/types.js";
+import { createWindowRuntime } from "./windowLifecycle.js";
+import { teardownMainProcessStreams } from "./runtimeTeardown.js";
 
 let currentUserId: string | null = null;
+let ipcHandlersRegistered = false;
+let logStreamBound = false;
 
 export function getCurrentUserId(): string | null {
   return currentUserId;
@@ -44,26 +49,37 @@ export function setCurrentUserId(id: string | null): void {
   else logger.clearUserId();
 }
 
-let mainWindow: BrowserWindow | null = null;
+const windowRuntime = createWindowRuntime((reason) => teardownMainProcessStreams(currentUserId, reason));
 
-const send = (channel: string, data: unknown) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(channel, data);
-  }
-};
+const send = (channel: string, data: unknown) => windowRuntime.safeSend(channel, data);
+
+function bindAccountWatcherCallbacks(): void {
+  accountWatcher.setCallbacks({
+    onPortfolio: (snap) => {
+      send(STREAM.PORTFOLIO, snap);
+    },
+    onPositions: (positions) => {
+      send(STREAM.POSITIONS, positions);
+    },
+    onMarketTick: (tick) => {
+      send(STREAM.MARKET_TICK, tick);
+    },
+  });
+}
 
 export function setMainWindow(window: BrowserWindow): void {
-  mainWindow = window;
+  bindAccountWatcherCallbacks();
+  windowRuntime.attachWindowLifecycle(window);
 }
 
 export function registerIpcHandlers(): void {
+  if (ipcHandlersRegistered) {
+    return;
+  }
 
-  // ─── Account Watcher (real-time balance/positions/prices) ──
-  accountWatcher.setCallbacks({
-    onPortfolio: (snap) => send(STREAM.PORTFOLIO, snap),
-    onPositions: (positions) => send(STREAM.POSITIONS, positions),
-    onMarketTick: (tick) => send(STREAM.MARKET_TICK, tick),
-  });
+  ipcHandlersRegistered = true;
+
+  bindAccountWatcherCallbacks();
 
   // ─── Auth ────────────────────────────────────────────
   ipcMain.handle(IPC.AUTH_REGISTER, async (_e, data) => {
@@ -285,6 +301,24 @@ export function registerIpcHandlers(): void {
         { apiKey: decrypt(keys.apiKey, userSalt), apiSecret: decrypt(keys.apiSecret, userSalt) },
         user.tradingMode,
       );
+      if (user.tradingMode === "spot") {
+        const openTrades = await TradeModel.find({
+          userId: currentUserId,
+          exchange: user.selectedExchange,
+          mode: "spot",
+          status: "OPEN",
+        })
+          .sort({ createdAt: 1 })
+          .lean();
+        return buildManagedPositions({
+          openTrades: openTrades.map((trade) => ({
+            symbol: trade.symbol,
+            side: trade.side as "BUY" | "SELL",
+            entryPrice: trade.entryPrice,
+            quantity: trade.quantity,
+          })),
+        });
+      }
       return await exchange.getOpenPositions();
     } catch (err) {
       await logger.warn("SYSTEM", `Positions fetch failed: ${err}`);
@@ -313,19 +347,18 @@ export function registerIpcHandlers(): void {
         exchange.setStartingBalance(user.engineConfig.paperStartingBalance ?? 10000);
       }
 
-      const positionsBefore = await exchange.getOpenPositions();
-      const currentPosition = positionsBefore.find(
-        (position) => position.symbol === parsed.symbol && position.side === parsed.side,
-      );
-      const orderResult = await exchange.closePosition(parsed.symbol, parsed.side, parsed.quantity);
-      const exitPrice = orderResult.price || currentPosition?.markPrice || currentPosition?.entryPrice || 0;
-
       const openTrade = await TradeModel.findOne({
         userId: currentUserId,
         symbol: parsed.symbol,
         side: parsed.side,
         status: "OPEN",
       }).sort({ createdAt: -1 });
+      const positionsBefore = await exchange.getOpenPositions();
+      const currentPosition = positionsBefore.find(
+        (position) => position.symbol === parsed.symbol && position.side === parsed.side,
+      );
+      const orderResult = await exchange.closePosition(parsed.symbol, parsed.side, parsed.quantity);
+      const exitPrice = orderResult.price || currentPosition?.markPrice || currentPosition?.entryPrice || openTrade?.entryPrice || 0;
 
       if (openTrade) {
         const pnl = parsed.side === "BUY"
@@ -356,6 +389,8 @@ export function registerIpcHandlers(): void {
           riskCheck: openTrade.riskCheck,
           pipelineRun: openTrade.pipelineRun ?? null,
           memoryReferences: openTrade.memoryReferences ?? [],
+          portfolioSlot: openTrade.portfolioSlot ?? null,
+          selectionRationale: openTrade.selectionRationale ?? null,
           createdAt: openTrade.createdAt.toISOString(),
           closedAt: openTrade.closedAt.toISOString(),
         });
@@ -444,6 +479,8 @@ export function registerIpcHandlers(): void {
       riskCheck: t.riskCheck,
       pipelineRun: t.pipelineRun ?? null,
       memoryReferences: t.memoryReferences ?? [],
+      portfolioSlot: t.portfolioSlot ?? null,
+      selectionRationale: t.selectionRationale ?? null,
       createdAt: t.createdAt.toISOString(),
       closedAt: t.closedAt?.toISOString() ?? null,
     }));
@@ -554,10 +591,6 @@ export function registerIpcHandlers(): void {
     if (!currentUserId) throw new Error("Not authenticated");
     const parsed = agentStartSchema.parse(data);
 
-    if (safetyService.getState().frozen) {
-      safetyService.resetFreeze();
-    }
-
     tradeEngine.setCallbacks({
       onMarketTick: (tick) => send(STREAM.MARKET_TICK, tick),
       onPortfolio: (snap) => send(STREAM.PORTFOLIO, snap),
@@ -585,9 +618,14 @@ export function registerIpcHandlers(): void {
 
     // Stop account watcher — agent's own streaming takes over
     await accountWatcher.stop();
-
-    await tradeEngine.start(currentUserId, parsed.symbol);
-    await auth.updateSettings(currentUserId, { agentModeEnabled: true });
+    try {
+      await tradeEngine.start(currentUserId, parsed.symbol);
+      await auth.updateSettings(currentUserId, { agentModeEnabled: true });
+    } catch (error) {
+      alertService.clearCallback();
+      accountWatcher.start(currentUserId).catch(() => {});
+      throw error;
+    }
   });
 
   ipcMain.handle(IPC.AGENT_STOP, async () => {
@@ -703,5 +741,10 @@ export function registerIpcHandlers(): void {
   });
 
   // ─── Log streaming (always active) ──────────────────
-  logger.on("log", (entry) => send(STREAM.LOG, entry));
+  if (!logStreamBound) {
+    logger.on("log", (entry) => {
+      send(STREAM.LOG, entry);
+    });
+    logStreamBound = true;
+  }
 }

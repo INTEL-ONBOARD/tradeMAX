@@ -20,6 +20,37 @@ export interface StageModelConfig {
   postTradeReviewer: string;
 }
 
+export interface ExchangeSymbolMetadata {
+  symbol: string;
+  mode: "spot" | "futures";
+  qtyStep: number;
+  minOrderQty: number;
+  minNotionalUsd: number;
+  priceTick: number;
+  supportsShorts: boolean;
+}
+
+export interface SymbolPerformanceSummary {
+  symbol: string;
+  mode: "spot" | "futures";
+  totalTrades: number;
+  winRate: number;
+  totalPnl: number;
+  lastClosedAt: string | null;
+}
+
+export interface SymbolSelectionEntry {
+  symbol: string;
+  mode: "spot" | "futures";
+  marketScore: number;
+  performanceScore: number;
+  compositeScore: number;
+  winRate: number;
+  sampleSize: number;
+  eligible: boolean;
+  reason: string;
+}
+
 export interface UserSettings {
   selectedExchange: "bybit" | "paper";
   tradingMode: "spot" | "futures";
@@ -42,16 +73,22 @@ export interface RiskProfile {
 export interface EngineConfig {
   tradingSymbol: string;
   autoPairSelection: boolean;
+  candidateSymbols: string[];
   tradingProfile: TradingProfile;
   loopIntervalSec: number;
   candleTimeframe: "1m" | "5m" | "15m";
   maxSlippagePct: number;
   tradeCooldownSec: number;
+  maxConcurrentSymbols: number;
+  symbolReentryCooldownSec: number;
   aiRetryCount: number;
   aiModel: string;
   stageModels: StageModelConfig;
   memoryRetrievalCount: number;
   memoryLookbackDays: number;
+  performanceLookbackDays: number;
+  minSymbolSampleSize: number;
+  minSymbolWinRate: number;
   critiqueStrictness: CritiqueStrictness;
   holdTimeBias: HoldTimeBias;
   exitStylePreference: ExitStylePreference;
@@ -296,6 +333,9 @@ export interface DecisionMemoryEntry {
     exitPrice?: number | null;
     pnl?: number | null;
     closedAt?: string | null;
+    portfolioSlot?: number | null;
+    symbolSelection?: SymbolSelectionEntry | null;
+    riskCheck?: RiskResult | null;
   };
   review?: PostTradeReview | null;
   createdAt?: string;
@@ -371,6 +411,8 @@ export interface Trade {
   riskCheck: RiskResult | null;
   pipelineRun: AgentCycleResult | null;
   memoryReferences: string[];
+  portfolioSlot?: number | null;
+  selectionRationale?: SymbolSelectionEntry | null;
   createdAt: string;
   closedAt: string | null;
 }
@@ -437,6 +479,9 @@ export interface AgentStatus {
   running: boolean;
   frozen: boolean;
   reason?: string;
+  activeSymbols: string[];
+  leaderboard: SymbolSelectionEntry[];
+  lastUpdatedAt?: string;
 }
 
 // ─── Market ────────────────────────────────────────────

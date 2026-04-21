@@ -22,11 +22,14 @@ export interface IUser extends Document {
   engineConfig: {
     tradingSymbol: string;
     autoPairSelection: boolean;
+    candidateSymbols: string[];
     tradingProfile: "scalp" | "intraday" | "swing" | "custom";
     loopIntervalSec: number;
     candleTimeframe: "1m" | "5m" | "15m";
     maxSlippagePct: number;
     tradeCooldownSec: number;
+    maxConcurrentSymbols: number;
+    symbolReentryCooldownSec: number;
     aiRetryCount: number;
     aiModel: string;
     stageModels: {
@@ -37,6 +40,9 @@ export interface IUser extends Document {
     };
     memoryRetrievalCount: number;
     memoryLookbackDays: number;
+    performanceLookbackDays: number;
+    minSymbolSampleSize: number;
+    minSymbolWinRate: number;
     critiqueStrictness: "low" | "balanced" | "high";
     holdTimeBias: "shorter" | "balanced" | "longer";
     exitStylePreference: "fixed" | "trailing" | "hybrid" | "balanced";
@@ -90,12 +96,15 @@ const userSchema = new Schema<IUser>(
     },
     engineConfig: {
       tradingSymbol: { type: String, default: "BTCUSDT" },
-      autoPairSelection: { type: Boolean, default: false },
+      autoPairSelection: { type: Boolean, default: true },
+      candidateSymbols: { type: [String], default: ["BTCUSDT", "ETHUSDT", "SOLUSDT"] },
       tradingProfile: { type: String, enum: ["scalp", "intraday", "swing", "custom"], default: "intraday" },
       loopIntervalSec: { type: Number, default: 8 },
       candleTimeframe: { type: String, enum: ["1m", "5m", "15m"], default: "1m" },
       maxSlippagePct: { type: Number, default: 0.5 },
       tradeCooldownSec: { type: Number, default: 30 },
+      maxConcurrentSymbols: { type: Number, default: 2 },
+      symbolReentryCooldownSec: { type: Number, default: 120 },
       aiRetryCount: { type: Number, default: 2 },
       aiModel: { type: String, default: "gpt-5.4-mini" },
       stageModels: {
@@ -106,6 +115,9 @@ const userSchema = new Schema<IUser>(
       },
       memoryRetrievalCount: { type: Number, default: 5 },
       memoryLookbackDays: { type: Number, default: 45 },
+      performanceLookbackDays: { type: Number, default: 21 },
+      minSymbolSampleSize: { type: Number, default: 4 },
+      minSymbolWinRate: { type: Number, default: 0.5 },
       critiqueStrictness: { type: String, enum: ["low", "balanced", "high"], default: "balanced" },
       holdTimeBias: { type: String, enum: ["shorter", "balanced", "longer"], default: "balanced" },
       exitStylePreference: { type: String, enum: ["fixed", "trailing", "hybrid", "balanced"], default: "balanced" },

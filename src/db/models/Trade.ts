@@ -17,6 +17,8 @@ export interface ITrade extends Document {
   riskCheck: Record<string, unknown> | null;
   pipelineRun: Record<string, unknown> | null;
   memoryReferences: string[];
+  portfolioSlot: number | null;
+  selectionRationale: Record<string, unknown> | null;
   createdAt: Date;
   closedAt: Date | null;
 }
@@ -39,6 +41,8 @@ const tradeSchema = new Schema<ITrade>(
     riskCheck: { type: Schema.Types.Mixed, default: null },
     pipelineRun: { type: Schema.Types.Mixed, default: null },
     memoryReferences: { type: [String], default: [] },
+    portfolioSlot: { type: Number, default: null },
+    selectionRationale: { type: Schema.Types.Mixed, default: null },
     closedAt: { type: Date, default: null },
   },
   { timestamps: true }

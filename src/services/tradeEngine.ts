@@ -1,22 +1,27 @@
 import { createExchangeService, type ExchangeServiceInstance } from "./exchangeFactory.js";
+import { buildExecutionValidation } from "./executionValidationService.js";
+import { buildManagedPositions } from "./managedPositionService.js";
 import { buildLiveMarketSnapshot } from "./marketSnapshotService.js";
+import { rankCandidateSymbols, pickTrackedSymbols } from "./portfolioSelectionService.js";
 import { persistCycleResult, reviewClosedTrade, runAIPipeline } from "./aiPipelineService.js";
 import { safetyService } from "./safetyService.js";
 import { alertService } from "./alertService.js";
 import { logger } from "./loggerService.js";
 import { decrypt } from "./encryptionService.js";
 import { getUserDoc } from "./authService.js";
-import { TradeModel } from "../db/models/Trade.js";
-import { AUTO_PAIR_FALLBACKS, selectBestAutoPair, type AutoPairTicker } from "./autoPairSelection.js";
+import { TradeModel, type ITrade } from "../db/models/Trade.js";
 import type {
   AgentCycleResult,
   AgentStatus,
   AIDecision,
   EngineConfig,
+  ExchangeSymbolMetadata,
   MarketTick,
   PortfolioSnapshot,
   Position,
+  RiskProfile,
   RiskResult,
+  SymbolSelectionEntry,
   Trade,
 } from "../shared/types.js";
 
@@ -29,21 +34,55 @@ type StreamCallback = {
   onAgentStatus?: (status: AgentStatus) => void;
 };
 
-async function fetchBestAutoPair(candidates: string[], mode: "spot" | "futures"): Promise<string | null> {
-  const normalizedCandidates = candidates.map((symbol) => symbol.toUpperCase());
-  if (normalizedCandidates.length === 0) return null;
-  const category = mode === "spot" ? "spot" : "linear";
-  const res = await fetch(`https://api.bybit.com/v5/market/tickers?category=${category}`);
-  if (!res.ok) throw new Error(`AUTO_PAIR_FETCH_${res.status}`);
-  const json = await res.json() as {
-    result?: { list?: Array<{ symbol: string; turnover24h?: string; price24hPcnt?: string }> };
-  };
-  const tickers: AutoPairTicker[] = (json.result?.list ?? []).map((ticker) => ({
-    symbol: ticker.symbol,
-    turnover24h: parseFloat(ticker.turnover24h || "0") || 0,
-    priceChangePct24h: Math.abs((parseFloat(ticker.price24hPcnt || "0") || 0) * 100),
-  }));
-  return selectBestAutoPair(normalizedCandidates, tickers);
+type ManagedTradeDoc = ITrade & {
+  _id: { toString(): string };
+  save: () => Promise<ManagedTradeDoc>;
+};
+
+function normalizeSymbols(symbols: string[]): string[] {
+  return [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
+}
+
+async function validateConfiguredModels(apiKey: string, modelIds: string[]): Promise<void> {
+  const uniqueModels = [...new Set(modelIds.filter(Boolean))];
+  if (uniqueModels.length === 0) {
+    throw new Error("No AI models configured for the trading pipeline");
+  }
+
+  const response = await fetch("https://api.openai.com/v1/models", {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`OpenAI model catalog check failed (${response.status})`);
+  }
+
+  const payload = await response.json() as { data?: Array<{ id: string }> };
+  const available = new Set((payload.data ?? []).map((entry) => entry.id));
+  const missing = uniqueModels.filter((model) => !available.has(model));
+  if (missing.length > 0) {
+    throw new Error(`Configured AI models unavailable: ${missing.join(", ")}`);
+  }
+}
+
+function resolveConfiguredSymbols(engineConfig: EngineConfig, requestedSymbol: string): string[] {
+  const requested = requestedSymbol.trim().toUpperCase();
+  if (!engineConfig.autoPairSelection) {
+    return [requested];
+  }
+
+  return normalizeSymbols([
+    requested,
+    ...(engineConfig.candidateSymbols ?? []),
+    ...(engineConfig.watchlist ?? []),
+  ]);
+}
+
+function toStartOfDay(now = new Date()): Date {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  return start;
 }
 
 export class TradeEngine {
@@ -57,14 +96,24 @@ export class TradeEngine {
   private apiFailures = 0;
   private openaiApiKey: string | undefined = undefined;
   private engineConfig: EngineConfig | null = null;
-  private lastTradeTimestamp = 0;
-  private lastMarketPrice = 0;
+  private riskProfile: RiskProfile | null = null;
+  private latestPrices = new Map<string, number>();
   private trailingStops = new Map<string, number>();
+  private lastTradeTimestampBySymbol = new Map<string, number>();
+  private lastExitTimestampBySymbol = new Map<string, number>();
+  private trackedSymbols: string[] = [];
+  private leaderboard: SymbolSelectionEntry[] = [];
+  private symbolMetadata = new Map<string, ExchangeSymbolMetadata>();
   private currentMode: "spot" | "futures" = "spot";
   private selectedExchange: "bybit" | "paper" = "paper";
+  private streamedSymbol = "";
 
   setCallbacks(cb: StreamCallback): void {
     this.callbacks = cb;
+  }
+
+  clearCallbacks(): void {
+    this.callbacks = {};
   }
 
   getLastAIDecision(): AgentCycleResult | null {
@@ -85,21 +134,35 @@ export class TradeEngine {
       running: this.running,
       frozen: safety.frozen,
       reason: safety.frozenReason ?? undefined,
+      activeSymbols: [...this.trackedSymbols],
+      leaderboard: [...this.leaderboard],
+      lastUpdatedAt: new Date().toISOString(),
     };
   }
 
   async start(userId: string, symbol: string): Promise<void> {
     if (this.running) return;
 
+    const safety = safetyService.getState();
+    if (safety.frozen || safety.emergencyShutdown) {
+      throw new Error(`Trading is frozen. Reset the safety state before restarting (${safety.frozenReason ?? "UNKNOWN"}).`);
+    }
+
     const user = await getUserDoc(userId);
     this.userId = userId;
     this.symbol = symbol.toUpperCase();
     this.engineConfig = user.engineConfig as EngineConfig;
+    this.riskProfile = user.riskProfile as RiskProfile;
     this.currentMode = user.tradingMode;
     this.selectedExchange = user.selectedExchange;
     this.apiFailures = 0;
-    this.lastTradeTimestamp = 0;
     this.trailingStops.clear();
+    this.latestPrices.clear();
+    this.lastTradeTimestampBySymbol.clear();
+    this.lastExitTimestampBySymbol.clear();
+    this.leaderboard = [];
+    this.trackedSymbols = [];
+    this.symbolMetadata.clear();
 
     safetyService.updateConfig({
       maxConsecutiveLosses: this.engineConfig.maxConsecutiveLosses,
@@ -117,7 +180,19 @@ export class TradeEngine {
     const apiSecret = !isPaper && bybitKeys.apiSecret ? decrypt(bybitKeys.apiSecret, userSalt) : "";
 
     const encryptedAIKey = user.openaiApiKey || user.claudeApiKey;
-    this.openaiApiKey = encryptedAIKey ? decrypt(encryptedAIKey, userSalt) : undefined;
+    if (!encryptedAIKey) {
+      throw new Error("No OpenAI API key configured");
+    }
+    this.openaiApiKey = decrypt(encryptedAIKey, userSalt);
+
+    await validateConfiguredModels(this.openaiApiKey, [
+      this.engineConfig.aiModel,
+      this.engineConfig.stageModels.marketAnalyst || this.engineConfig.aiModel,
+      this.engineConfig.stageModels.tradeArchitect || this.engineConfig.aiModel,
+      this.engineConfig.stageModels.executionCritic || this.engineConfig.aiModel,
+      this.engineConfig.stageModels.postTradeReviewer || this.engineConfig.aiModel,
+      ...(this.engineConfig.enableMultiModelVoting ? this.engineConfig.votingModels : []),
+    ]);
 
     this.exchange = createExchangeService(user.selectedExchange);
     await this.exchange.initialize({ apiKey, apiSecret }, user.tradingMode);
@@ -126,23 +201,54 @@ export class TradeEngine {
       this.exchange.setStartingBalance(this.engineConfig.paperStartingBalance);
     }
 
-    if (this.engineConfig.autoPairSelection) {
-      const autoPair = await fetchBestAutoPair(
-        this.engineConfig.watchlist.length > 0 ? this.engineConfig.watchlist : [...AUTO_PAIR_FALLBACKS],
-        user.tradingMode,
-      ).catch(() => null);
-      if (autoPair) this.symbol = autoPair;
+    const configuredSymbols = resolveConfiguredSymbols(this.engineConfig, this.symbol);
+    const metadataRows = await this.exchange.getSymbolMetadata(configuredSymbols);
+    for (const metadata of metadataRows) {
+      this.symbolMetadata.set(metadata.symbol, metadata);
+    }
+    if (this.symbolMetadata.size === 0) {
+      throw new Error("No exchange symbol metadata available for the configured trading universe");
     }
 
-    this.exchange.startTickerStream(this.symbol, (tick) => {
-      this.lastMarketPrice = tick.price;
-      this.callbacks.onMarketTick?.(tick);
-    }, this.engineConfig.wsReconnectRetries);
+    this.leaderboard = await rankCandidateSymbols({
+      userId: this.userId,
+      mode: this.currentMode,
+      engineConfig: this.engineConfig,
+      requestedSymbol: this.symbol,
+    });
+    this.trackedSymbols = pickTrackedSymbols({
+      leaderboard: this.leaderboard,
+      openTradeSymbols: [],
+      maxConcurrentSymbols: this.engineConfig.maxConcurrentSymbols,
+    });
+    this.symbol = this.leaderboard[0]?.symbol ?? this.trackedSymbols[0] ?? this.symbol;
+
+    this.startMarketStream(this.symbol);
 
     this.running = true;
     this.emitStatus();
     this.scheduleNextCycle();
-    await logger.info("TRADE", `Agent started on ${this.symbol} (${user.selectedExchange} ${user.tradingMode})`);
+    await logger.info(
+      "TRADE",
+      `Agent started on ${this.symbol} (${user.selectedExchange} ${user.tradingMode}) with ${this.trackedSymbols.length} tracked symbols`,
+    );
+  }
+
+  private startMarketStream(symbol: string): void {
+    if (!this.exchange || !this.engineConfig || !symbol) return;
+    if (this.streamedSymbol === symbol) return;
+
+    this.streamedSymbol = symbol;
+    this.exchange.startTickerStream(
+      symbol,
+      (tick) => {
+        this.latestPrices.set(tick.symbol.toUpperCase(), tick.price);
+        if (tick.symbol.toUpperCase() === this.symbol) {
+          this.callbacks.onMarketTick?.(tick);
+        }
+      },
+      this.engineConfig.wsReconnectRetries,
+    );
   }
 
   private scheduleNextCycle(): void {
@@ -151,33 +257,57 @@ export class TradeEngine {
   }
 
   async stop(): Promise<void> {
-    if (!this.running) return;
+    const wasActive = this.running || this.exchange !== null || this.loopTimer !== null;
+    if (!wasActive) return;
     if (this.loopTimer) clearTimeout(this.loopTimer);
     this.loopTimer = null;
     this.exchange?.stopTickerStream();
     this.exchange?.destroy();
     this.exchange = null;
     this.running = false;
+    this.streamedSymbol = "";
     this.openaiApiKey = undefined;
+    this.trackedSymbols = [];
+    this.leaderboard = [];
     this.emitStatus();
-    await logger.info("TRADE", "Agent stopped");
+    if (wasActive) {
+      await logger.info("TRADE", "Agent stopped");
+    }
   }
 
   async killSwitch(): Promise<void> {
     await logger.error("SAFETY", "KILL SWITCH — executing emergency shutdown");
+    const openTrades = await this.fetchManagedOpenTrades();
     if (this.exchange) {
       try {
         await this.exchange.cancelAllOrders(this.symbol);
       } catch {}
-      try {
-        const positions = await this.exchange.getOpenPositions();
-        for (const pos of positions) {
-          await this.exchange.closePosition(pos.symbol, pos.side, pos.quantity);
-        }
-      } catch {}
+      for (const tradeDoc of openTrades) {
+        try {
+          const closeResult = await this.exchange.closePosition(tradeDoc.symbol, tradeDoc.side, tradeDoc.quantity);
+          const exitPrice = closeResult.price || this.latestPrices.get(tradeDoc.symbol.toUpperCase()) || tradeDoc.entryPrice;
+          await this.closeTrade(tradeDoc, exitPrice, "KILL_SWITCH");
+        } catch {}
+      }
     }
     safetyService.activateKillSwitch();
     await this.stop();
+  }
+
+  private async fetchManagedOpenTrades(): Promise<ManagedTradeDoc[]> {
+    return (await TradeModel.find({ userId: this.userId, status: "OPEN" }).sort({ createdAt: 1 })) as ManagedTradeDoc[];
+  }
+
+  private async fetchDailyRealizedLoss(): Promise<number> {
+    const closedTrades = (await TradeModel.find({
+      userId: this.userId,
+      status: "CLOSED",
+      closedAt: { $gte: toStartOfDay() },
+    })
+      .select({ pnl: 1 })
+      .lean()) as Array<{ pnl?: number | null }>;
+
+    return closedTrades.reduce((sum, trade) => sum + ((trade.pnl ?? 0) < 0 ? Math.abs(trade.pnl ?? 0) : 0), 0);
   }
 
   private async fetchPortfolio(): Promise<PortfolioSnapshot | null> {
@@ -197,9 +327,23 @@ export class TradeEngine {
     }
   }
 
-  private async fetchPositions(): Promise<Position[]> {
+  private async fetchPositions(openTrades: ManagedTradeDoc[]): Promise<Position[]> {
     if (!this.exchange) return [];
     try {
+      if (this.selectedExchange === "bybit" && this.currentMode === "spot") {
+        const positions = buildManagedPositions({
+          openTrades: openTrades.map((trade) => ({
+            symbol: trade.symbol,
+            side: trade.side,
+            entryPrice: trade.entryPrice,
+            quantity: trade.quantity,
+          })),
+          latestPrices: this.latestPrices,
+        });
+        this.callbacks.onPositions?.(positions);
+        return positions;
+      }
+
       const positions = await this.exchange.getOpenPositions();
       this.callbacks.onPositions?.(positions);
       return positions;
@@ -223,12 +367,15 @@ export class TradeEngine {
       exitPrice?: number | null;
       pnl?: number | null;
       closedAt?: string | null;
+      portfolioSlot?: number | null;
+      symbolSelection?: SymbolSelectionEntry | null;
+      riskCheck?: RiskResult | null;
     },
   ): Promise<void> {
     await persistCycleResult({ userId: this.userId, cycle, executionResult });
   }
 
-  private async closeTrade(tradeDoc: any, exitPrice: number, reason: string): Promise<void> {
+  private async closeTrade(tradeDoc: ManagedTradeDoc, exitPrice: number, reason: string): Promise<void> {
     const pnl =
       tradeDoc.side === "BUY"
         ? (exitPrice - tradeDoc.entryPrice) * tradeDoc.quantity
@@ -240,6 +387,7 @@ export class TradeEngine {
     tradeDoc.closedAt = new Date();
     await tradeDoc.save();
     this.trailingStops.delete(tradeDoc._id.toString());
+    this.lastExitTimestampBySymbol.set(tradeDoc.symbol.toUpperCase(), Date.now());
 
     if (pnl >= 0) safetyService.recordWin();
     else safetyService.recordLoss();
@@ -258,10 +406,12 @@ export class TradeEngine {
       source: tradeDoc.source,
       exchange: tradeDoc.exchange,
       mode: tradeDoc.mode,
-      aiDecision: tradeDoc.aiDecision,
-      riskCheck: tradeDoc.riskCheck,
-      pipelineRun: tradeDoc.pipelineRun ?? null,
+      aiDecision: (tradeDoc.aiDecision ?? null) as AIDecision | null,
+      riskCheck: (tradeDoc.riskCheck ?? null) as RiskResult | null,
+      pipelineRun: (tradeDoc.pipelineRun ?? null) as AgentCycleResult | null,
       memoryReferences: tradeDoc.memoryReferences ?? [],
+      portfolioSlot: tradeDoc.portfolioSlot ?? null,
+      selectionRationale: (tradeDoc.selectionRationale ?? null) as SymbolSelectionEntry | null,
       createdAt: tradeDoc.createdAt.toISOString(),
       closedAt: tradeDoc.closedAt.toISOString(),
     };
@@ -271,7 +421,7 @@ export class TradeEngine {
         userId: this.userId,
         trade: tradeForReview,
         openaiApiKey: this.openaiApiKey,
-        model: this.engineConfig?.stageModels.postTradeReviewer,
+        model: this.engineConfig?.stageModels.postTradeReviewer || this.engineConfig?.aiModel,
       });
     }
 
@@ -279,14 +429,11 @@ export class TradeEngine {
     this.callbacks.onTradeExecuted?.(tradeForReview);
   }
 
-  private async manageOpenTrades(currentPrice: number): Promise<void> {
-    if (!(currentPrice > 0)) {
-      return;
-    }
-
-    const openTrades = await TradeModel.find({ userId: this.userId, status: "OPEN" });
-
+  private async manageOpenTrades(openTrades: ManagedTradeDoc[], priceBySymbol: Map<string, number>): Promise<void> {
     for (const tradeDoc of openTrades) {
+      const currentPrice = priceBySymbol.get(tradeDoc.symbol.toUpperCase()) ?? this.latestPrices.get(tradeDoc.symbol.toUpperCase()) ?? 0;
+      if (!(currentPrice > 0)) continue;
+
       const pipelineRun = tradeDoc.pipelineRun as AgentCycleResult | null;
       if (!pipelineRun) continue;
 
@@ -322,11 +469,53 @@ export class TradeEngine {
     }
   }
 
+  private isSymbolOnCooldown(symbol: string): boolean {
+    if (!this.engineConfig) return false;
+    const lastExit = this.lastExitTimestampBySymbol.get(symbol.toUpperCase()) ?? 0;
+    if (lastExit <= 0) return false;
+    return Date.now() - lastExit < this.engineConfig.symbolReentryCooldownSec * 1000;
+  }
+
+  private isTradeOnCooldown(symbol: string): boolean {
+    if (!this.engineConfig) return false;
+    const lastTradeAt = this.lastTradeTimestampBySymbol.get(symbol.toUpperCase()) ?? 0;
+    if (lastTradeAt <= 0) return false;
+    return Date.now() - lastTradeAt < this.engineConfig.tradeCooldownSec * 1000;
+  }
+
+  private async refreshLeaderboard(openTradeSymbols: string[]): Promise<void> {
+    if (!this.engineConfig) return;
+
+    this.leaderboard = await rankCandidateSymbols({
+      userId: this.userId,
+      mode: this.currentMode,
+      engineConfig: this.engineConfig,
+      requestedSymbol: this.symbol,
+    });
+    this.trackedSymbols = pickTrackedSymbols({
+      leaderboard: this.leaderboard,
+      openTradeSymbols,
+      maxConcurrentSymbols: this.engineConfig.maxConcurrentSymbols,
+    });
+
+    if (this.leaderboard[0]?.symbol) {
+      this.symbol = this.leaderboard[0].symbol;
+      this.startMarketStream(this.symbol);
+    }
+  }
+
+  private emitStatus(): void {
+    this.callbacks.onAgentStatus?.(this.getStatus());
+  }
+
   private async cycle(): Promise<void> {
-    if (!this.running || !this.exchange || !this.engineConfig) return;
+    if (!this.running || !this.exchange || !this.engineConfig || !this.riskProfile) return;
 
     try {
-      if (!safetyService.canTrade()) return;
+      if (!safetyService.canTrade()) {
+        this.emitStatus();
+        return;
+      }
 
       const portfolio = await this.fetchPortfolio();
       if (!portfolio || !safetyService.checkDrawdown(portfolio.totalBalance)) {
@@ -334,157 +523,178 @@ export class TradeEngine {
         return;
       }
 
-      const positions = await this.fetchPositions();
-      const currentPrice = this.lastMarketPrice || positions[0]?.markPrice || 0;
-      if (currentPrice > 0) {
-        await this.manageOpenTrades(currentPrice);
-      } else {
-        await logger.warn("TRADE", "Skipping open-trade management because live price is unavailable", {
-          symbol: this.symbol,
+      let openTrades = await this.fetchManagedOpenTrades();
+      const positions = await this.fetchPositions(openTrades);
+      await this.refreshLeaderboard(openTrades.map((trade) => trade.symbol.toUpperCase()));
+
+      const symbolSnapshots = new Map<string, Awaited<ReturnType<typeof buildLiveMarketSnapshot>>>();
+      for (const symbol of this.trackedSymbols) {
+        const snapshot = await buildLiveMarketSnapshot({
+          symbol,
+          mode: this.currentMode,
+          portfolio,
+          openPositions: positions,
+          engineConfig: this.engineConfig,
+        }).catch(() => null);
+        if (!snapshot) continue;
+
+        symbolSnapshots.set(symbol.toUpperCase(), snapshot);
+        this.latestPrices.set(symbol.toUpperCase(), snapshot.currentPrice);
+      }
+
+      await this.manageOpenTrades(openTrades, this.latestPrices);
+      openTrades = await this.fetchManagedOpenTrades();
+      const dailyRealizedLoss = await this.fetchDailyRealizedLoss();
+      let openTradeCount = openTrades.length;
+
+      for (const selection of this.leaderboard) {
+        if (!selection.eligible) continue;
+        if (openTradeCount >= Math.min(this.riskProfile.maxOpenPositions, this.engineConfig.maxConcurrentSymbols)) {
+          break;
+        }
+
+        const symbol = selection.symbol.toUpperCase();
+        const snapshot = symbolSnapshots.get(symbol);
+        if (!snapshot || !snapshot.integrity.isDataComplete) continue;
+        if (openTrades.some((trade) => trade.symbol.toUpperCase() === symbol)) continue;
+        if (this.isTradeOnCooldown(symbol) || this.isSymbolOnCooldown(symbol)) continue;
+
+        const cycle = await runAIPipeline({
+          userId: this.userId,
+          snapshot,
+          engineConfig: this.engineConfig,
+          openaiApiKey: this.openaiApiKey,
         });
+        this.lastPipelineRun = cycle;
+        this.callbacks.onAIDecision?.(cycle);
+
+        const decision = this.convertPipelineRunToTradeDecision(cycle);
+        alertService.onAIDecision(decision.decision, decision.confidence, `${symbol}: ${decision.reason}`);
+
+        if (cycle.status !== "READY") {
+          await this.persistCycle(cycle, {
+            filled: false,
+            blockedReason: cycle.holdReason ?? "PIPELINE_HOLD",
+            symbolSelection: selection,
+          });
+          continue;
+        }
+
+        if (this.engineConfig.shadowModeEnabled) {
+          await logger.info("AI", `Shadow mode verdict: ${decision.decision}`, { cycleId: cycle.cycleId, rationale: decision.reason, symbol });
+          await this.persistCycle(cycle, { tradeId: null, filled: false, blockedReason: "SHADOW_MODE", symbolSelection: selection });
+          continue;
+        }
+
+        const validation = buildExecutionValidation({
+          decision,
+          snapshot,
+          riskProfile: this.riskProfile,
+          engineConfig: this.engineConfig,
+          desiredSizeUsd: cycle.executionReview.adjustedSizeUsd,
+          requestedLeverage: cycle.executionReview.adjustedLeverage,
+          desiredTrailingStopPct: cycle.executionReview.trailingStopPct,
+          metadata: this.symbolMetadata.get(symbol) ?? null,
+          openTradeCount,
+          openTradesForSymbol: openTrades.filter((trade) => trade.symbol.toUpperCase() === symbol).length,
+          dailyRealizedLoss,
+          peakBalance: safetyService.getState().peakBalance,
+          selection,
+        });
+
+        if (!validation.approved) {
+          await this.persistCycle(cycle, {
+            tradeId: null,
+            filled: false,
+            blockedReason: validation.blockedReason,
+            symbolSelection: selection,
+            riskCheck: validation.riskCheck,
+          });
+          continue;
+        }
+
+        if (this.currentMode === "futures") {
+          await this.exchange.setLeverage(symbol, validation.leverage);
+        }
+
+        const orderResult = await this.exchange.placeMarketOrder(symbol, decision.decision as "BUY" | "SELL", validation.quantity);
+        const fillPrice = orderResult.price || snapshot.currentPrice;
+        const slippagePct = decision.entry > 0 ? Math.abs((fillPrice - decision.entry) / decision.entry) * 100 : 0;
+        if (slippagePct > this.engineConfig.maxSlippagePct) {
+          await logger.warn("TRADE", `High slippage detected: ${slippagePct.toFixed(3)}%`, { cycleId: cycle.cycleId, symbol });
+        }
+
+        const portfolioSlot = openTradeCount + 1;
+        const tradeDoc = (await TradeModel.create({
+          userId: this.userId,
+          symbol,
+          side: decision.decision,
+          type: "MARKET",
+          entryPrice: fillPrice,
+          quantity: orderResult.quantity || validation.quantity,
+          status: "OPEN",
+          source: "AI",
+          exchange: this.selectedExchange,
+          mode: this.currentMode,
+          aiDecision: decision,
+          riskCheck: validation.riskCheck,
+          pipelineRun: cycle,
+          memoryReferences: cycle.retrievedMemories.map((item) => item.id),
+          portfolioSlot,
+          selectionRationale: selection,
+        })) as ManagedTradeDoc;
+
+        await this.persistCycle(cycle, {
+          tradeId: tradeDoc._id.toString(),
+          filled: true,
+          entryPrice: fillPrice,
+          portfolioSlot,
+          symbolSelection: selection,
+          riskCheck: validation.riskCheck,
+        });
+
+        this.lastTradeTimestampBySymbol.set(symbol, Date.now());
+        openTradeCount += 1;
+
+        this.callbacks.onTradeExecuted?.({
+          _id: tradeDoc._id.toString(),
+          userId: this.userId,
+          symbol,
+          side: decision.decision as "BUY" | "SELL",
+          type: "MARKET",
+          entryPrice: fillPrice,
+          exitPrice: null,
+          quantity: orderResult.quantity || validation.quantity,
+          pnl: null,
+          status: "OPEN",
+          source: "AI",
+          exchange: this.selectedExchange,
+          mode: this.currentMode,
+          aiDecision: decision,
+          riskCheck: validation.riskCheck,
+          pipelineRun: cycle,
+          memoryReferences: cycle.retrievedMemories.map((item) => item.id),
+          portfolioSlot,
+          selectionRationale: selection,
+          createdAt: tradeDoc.createdAt.toISOString(),
+          closedAt: null,
+        });
+        await logger.info("TRADE", `Order executed: ${decision.decision} ${symbol}`, {
+          cycleId: cycle.cycleId,
+          quantity: validation.quantity,
+          fillPrice,
+          portfolioSlot,
+        });
+
+        openTrades.push(tradeDoc);
       }
 
-      const cooldownMs = this.engineConfig.tradeCooldownSec * 1000;
-      if (cooldownMs > 0 && Date.now() - this.lastTradeTimestamp < cooldownMs) return;
-
-      const snapshot = await buildLiveMarketSnapshot({
-        symbol: this.symbol,
-        mode: this.currentMode,
-        portfolio,
-        openPositions: positions,
-        engineConfig: this.engineConfig,
-      });
-
-      if (!snapshot.integrity.isDataComplete) {
-        await logger.warn("TRADE", "Skipping cycle because market snapshot is incomplete", { warnings: snapshot.integrity.warnings });
-        return;
-      }
-
-      const cycle = await runAIPipeline({
-        userId: this.userId,
-        snapshot,
-        engineConfig: this.engineConfig,
-        openaiApiKey: this.openaiApiKey,
-      });
-      this.lastPipelineRun = cycle;
-      this.callbacks.onAIDecision?.(cycle);
-      const decision = this.convertPipelineRunToTradeDecision(cycle);
-      alertService.onAIDecision(decision.decision, decision.confidence, decision.reason);
-
-      if (cycle.status !== "READY") {
-        await this.persistCycle(cycle);
-        return;
-      }
-
-      if (this.engineConfig.shadowModeEnabled) {
-        await logger.info("AI", `Shadow mode verdict: ${decision.decision}`, { cycleId: cycle.cycleId, rationale: decision.reason });
-        await this.persistCycle(cycle, { tradeId: null, filled: false, blockedReason: "SHADOW_MODE" });
-        return;
-      }
-
-      if (!decision.entry || !decision.stop_loss || !decision.take_profit) {
-        await logger.warn("AI", "Emergency floor rejected malformed execution numbers", { cycleId: cycle.cycleId });
-        await this.persistCycle(cycle, { tradeId: null, filled: false, blockedReason: "MALFORMED_EXECUTION" });
-        return;
-      }
-
-      const entryDeviation = snapshot.currentPrice > 0
-        ? Math.abs((decision.entry - snapshot.currentPrice) / snapshot.currentPrice) * 100
-        : 0;
-      if (entryDeviation > 3) {
-        await logger.warn("AI", "Emergency floor rejected excessive entry deviation", { entryDeviation, cycleId: cycle.cycleId });
-        await this.persistCycle(cycle, { tradeId: null, filled: false, blockedReason: "ENTRY_DEVIATION" });
-        return;
-      }
-
-      const sizeUsd = cycle.executionReview.adjustedSizeUsd;
-      const leverage = Math.min(cycle.executionReview.adjustedLeverage, this.engineConfig.maxDrawdownPct > 0 ? 25 : 10, 20);
-      const maxSafeNotional = Math.max(0, portfolio.availableBalance * leverage);
-      if (sizeUsd <= 0 || sizeUsd > maxSafeNotional) {
-        await logger.warn("AI", "Emergency floor rejected unsafe notional", { sizeUsd, maxSafeNotional, cycleId: cycle.cycleId });
-        await this.persistCycle(cycle, { tradeId: null, filled: false, blockedReason: "UNSAFE_NOTIONAL" });
-        return;
-      }
-
-      const quantity = Number((sizeUsd / Math.max(snapshot.currentPrice, 1)).toFixed(6));
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        await logger.warn("AI", "Emergency floor rejected non-finite quantity", { quantity, cycleId: cycle.cycleId });
-        await this.persistCycle(cycle, { tradeId: null, filled: false, blockedReason: "INVALID_QUANTITY" });
-        return;
-      }
-
-      if (this.currentMode === "futures") {
-        await this.exchange.setLeverage(this.symbol, leverage);
-      }
-
-      const orderResult = await this.exchange.placeMarketOrder(this.symbol, decision.decision as "BUY" | "SELL", quantity);
-      const fillPrice = orderResult.price || snapshot.currentPrice;
-      const slippagePct = decision.entry > 0 ? Math.abs((fillPrice - decision.entry) / decision.entry) * 100 : 0;
-      if (slippagePct > this.engineConfig.maxSlippagePct) {
-        await logger.warn("TRADE", `High slippage detected: ${slippagePct.toFixed(3)}%`, { cycleId: cycle.cycleId });
-      }
-
-      const tradeDoc = await TradeModel.create({
-        userId: this.userId,
-        symbol: this.symbol,
-        side: decision.decision,
-        type: "MARKET",
-        entryPrice: fillPrice,
-        quantity: orderResult.quantity || quantity,
-        status: "OPEN",
-        source: "AI",
-        exchange: this.selectedExchange,
-        mode: this.currentMode,
-        aiDecision: decision,
-        riskCheck: {
-          approved: true,
-          passed: ["PIPELINE_READY", "EMERGENCY_FLOORS_PASSED"],
-          failed: [],
-          reasons: [],
-        },
-        pipelineRun: cycle,
-        memoryReferences: cycle.retrievedMemories.map((item) => item.id),
-      });
-
-      await this.persistCycle(cycle, {
-        tradeId: tradeDoc._id.toString(),
-        filled: true,
-        entryPrice: fillPrice,
-      });
-
-      this.lastTradeTimestamp = Date.now();
-
-      this.callbacks.onTradeExecuted?.({
-        _id: tradeDoc._id.toString(),
-        userId: this.userId,
-        symbol: this.symbol,
-        side: decision.decision as "BUY" | "SELL",
-        type: "MARKET",
-        entryPrice: fillPrice,
-        exitPrice: null,
-        quantity: orderResult.quantity || quantity,
-        pnl: null,
-        status: "OPEN",
-        source: "AI",
-        exchange: this.selectedExchange,
-        mode: this.currentMode,
-        aiDecision: decision,
-        riskCheck: tradeDoc.riskCheck as RiskResult | null,
-        pipelineRun: cycle,
-        memoryReferences: cycle.retrievedMemories.map((item) => item.id),
-        createdAt: tradeDoc.createdAt.toISOString(),
-        closedAt: null,
-      });
-      await logger.info("TRADE", `Order executed: ${decision.decision} ${this.symbol}`, { cycleId: cycle.cycleId, quantity, fillPrice });
+      this.emitStatus();
     } catch (error) {
       await logger.error("TRADE", `Cycle error: ${error}`);
     } finally {
       this.scheduleNextCycle();
     }
-  }
-
-  private emitStatus(): void {
-    this.callbacks.onAgentStatus?.(this.getStatus());
   }
 }
 

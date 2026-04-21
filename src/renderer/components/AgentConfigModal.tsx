@@ -254,7 +254,7 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
 
             {autoPair ? (
               <div className="flex items-center justify-center py-3 rounded-lg border border-dashed border-[var(--color-profit)]" style={{ background: "rgba(16,185,129,0.05)" }}>
-                <p className="text-xs text-[var(--color-profit)] font-medium">The system will pick the strongest pair from your watchlist before trading</p>
+                <p className="text-xs text-[var(--color-profit)] font-medium">The AI will rank the configured candidate symbols and trade the best portfolio opportunities</p>
               </div>
             ) : (
               <PairDropdown

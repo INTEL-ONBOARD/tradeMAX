@@ -812,15 +812,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       )}
                     </div>
                   </div>
-                  <SettingRow label="Auto Pair Selection" description="Pick the strongest pair from your watchlist before the agent starts trading">
+                  <SettingRow label="Portfolio AI Selection" description="Let the agent rank and rotate across the configured candidate universe">
                     <Toggle checked={ec.autoPairSelection} onChange={(v) => updateEngineConfig("autoPairSelection", v)} />
                   </SettingRow>
-                  <SettingRow label="Auto Pair Watchlist" description="Comma-separated symbols scanned when auto pair selection is enabled">
+                  <SettingRow label="Candidate Symbols" description="Comma-separated symbols the portfolio agent can score and trade">
                     <TextInput
-                      value={(ec.watchlist ?? []).join(", ")}
-                      onChange={(v) => updateEngineConfig("watchlist", v.split(",").map((s) => s.trim()).filter(Boolean))}
+                      value={(ec.candidateSymbols ?? ec.watchlist ?? []).join(", ")}
+                      onChange={(v) => updateEngineConfig("candidateSymbols", v.split(",").map((s) => s.trim()).filter(Boolean))}
                       className="w-64 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
                     />
+                  </SettingRow>
+                  <SettingRow label="Max Concurrent Symbols" description="Maximum portfolio slots the AI may keep open at the same time">
+                    <NumberInput value={ec.maxConcurrentSymbols} min={1} max={10} step={1} onChange={(v) => updateEngineConfig("maxConcurrentSymbols", Math.round(v))} />
+                  </SettingRow>
+                  <SettingRow label="Symbol Re-entry Cooldown (sec)" description="Minimum wait after a symbol exits before the AI can re-enter it">
+                    <NumberInput value={ec.symbolReentryCooldownSec} min={0} max={3600} step={15} onChange={(v) => updateEngineConfig("symbolReentryCooldownSec", Math.round(v))} />
                   </SettingRow>
                   <SettingRow label="Loop Interval (sec)" description="Seconds between each trading loop iteration (3 - 120)">
                     <NumberInput value={ec.loopIntervalSec} min={3} max={120} step={1} onChange={(v) => updateEngineConfig("loopIntervalSec", Math.round(v))} />
@@ -886,6 +892,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </SettingRow>
                   <SettingRow label="Memory Lookback Days" description="How far back local memory retrieval searches">
                     <NumberInput value={ec.memoryLookbackDays} min={1} max={365} step={1} onChange={(v) => updateEngineConfig("memoryLookbackDays", Math.round(v))} />
+                  </SettingRow>
+                  <SettingRow label="Performance Lookback Days" description="Recent trade window used when scoring candidate symbols">
+                    <NumberInput value={ec.performanceLookbackDays} min={1} max={180} step={1} onChange={(v) => updateEngineConfig("performanceLookbackDays", Math.round(v))} />
+                  </SettingRow>
+                  <SettingRow label="Min Symbol Sample Size" description="Minimum closed trades before a symbol's win rate can gate future selection">
+                    <NumberInput value={ec.minSymbolSampleSize} min={1} max={50} step={1} onChange={(v) => updateEngineConfig("minSymbolSampleSize", Math.round(v))} />
+                  </SettingRow>
+                  <SettingRow label="Min Symbol Win Rate" description="Symbols below this realized win rate are suppressed once enough samples exist">
+                    <NumberInput value={ec.minSymbolWinRate} min={0} max={1} step={0.05} onChange={(v) => updateEngineConfig("minSymbolWinRate", v)} />
                   </SettingRow>
                   <SettingRow label="Critique Strictness" description="How aggressively the execution critic downgrades trades">
                     <SelectInput value={ec.critiqueStrictness} options={["low", "balanced", "high"]} onChange={(v) => updateEngineConfig("critiqueStrictness", v)} />

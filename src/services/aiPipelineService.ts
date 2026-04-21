@@ -193,6 +193,51 @@ const SELF_REVIEW_JSON_SCHEMA = {
   required: ["summary", "memoryNote", "successThemes", "failureThemes", "recommendedActions", "confidence"],
 };
 
+function resolveStageModel(engineConfig: EngineConfig, stage: keyof EngineConfig["stageModels"]): string {
+  return engineConfig.stageModels?.[stage] || engineConfig.aiModel;
+}
+
+function buildTradingModeLabel(snapshot: MarketSnapshot): string {
+  return snapshot.mode === "spot" ? "spot trading agent" : "futures trading agent";
+}
+
+function applyExecutionConfig(review: ExecutionReview, engineConfig: EngineConfig): ExecutionReview {
+  const trailingStopPct = !engineConfig.enableTrailingStop
+    ? null
+    : review.trailingStopPct === null
+      ? null
+      : Math.min(review.trailingStopPct, engineConfig.trailingStopPct);
+
+  return {
+    ...review,
+    adjustedLeverage: Math.min(Math.max(review.adjustedLeverage, 1), 20),
+    trailingStopPct,
+  };
+}
+
+function chooseExecutionReview(reviews: ExecutionReview[]): ExecutionReview {
+  if (reviews.length === 0) return EXECUTION_FALLBACK;
+
+  const priorityByAction: Record<ExecutionReview["finalAction"], number> = {
+    HOLD: 0,
+    BUY: 1,
+    SELL: 1,
+  };
+  const actionCounts = new Map<ExecutionReview["finalAction"], number>();
+  for (const review of reviews) {
+    actionCounts.set(review.finalAction, (actionCounts.get(review.finalAction) ?? 0) + 1);
+  }
+
+  return [...reviews]
+    .sort((left, right) => {
+      const countDelta = (actionCounts.get(right.finalAction) ?? 0) - (actionCounts.get(left.finalAction) ?? 0);
+      if (countDelta !== 0) return countDelta;
+      const priorityDelta = priorityByAction[left.finalAction] - priorityByAction[right.finalAction];
+      if (priorityDelta !== 0) return priorityDelta;
+      return right.finalConfidence - left.finalConfidence;
+    })[0];
+}
+
 async function callStage<T>({
   apiKey,
   model,
@@ -203,6 +248,7 @@ async function callStage<T>({
   jsonSchema,
   validator,
   fallback,
+  retryCount = 0,
 }: {
   apiKey?: string;
   model: string;
@@ -213,6 +259,7 @@ async function callStage<T>({
   jsonSchema: Record<string, unknown>;
   validator: { safeParse: (value: unknown) => { success: true; data: T } | { success: false; error: { issues: unknown } } };
   fallback: T;
+  retryCount?: number;
 }): Promise<{ data: T; latencyMs: number; fallbackUsed: boolean }> {
   if (!apiKey) {
     await logger.warn("AI", `${stage}: missing OpenAI key, using fallback`);
@@ -220,40 +267,46 @@ async function callStage<T>({
   }
 
   const started = Date.now();
-  try {
-    const response = await getClient(apiKey).responses.create({
-      model,
-      store: false,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: JSON.stringify(input) },
-      ],
-      text: { format: jsonSchemaForStage(schemaName, jsonSchema) },
-    }, {
-      timeout: ENGINE.AI_STAGE_TIMEOUT_MS,
-    });
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+    try {
+      const response = await getClient(apiKey).responses.create({
+        model,
+        store: false,
+        input: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: JSON.stringify(input) },
+        ],
+        text: { format: jsonSchemaForStage(schemaName, jsonSchema) },
+      }, {
+        timeout: ENGINE.AI_STAGE_TIMEOUT_MS,
+      });
 
-    const rawText = response.output_text?.trim();
-    if (!rawText) {
-      await logger.warn("AI", `${stage}: empty output, using fallback`);
-      return { data: fallback, latencyMs: Date.now() - started, fallbackUsed: true };
+      const rawText = response.output_text?.trim();
+      if (!rawText) {
+        throw new Error("EMPTY_STAGE_OUTPUT");
+      }
+
+      const parsed = JSON.parse(rawText);
+      const validated = validator.safeParse(parsed);
+      if (!validated.success) {
+        const failure = validated as { success: false; error: { issues: unknown } };
+        throw new Error(`SCHEMA_VALIDATION:${JSON.stringify(failure.error.issues)}`);
+      }
+
+      return { data: validated.data as T, latencyMs: Date.now() - started, fallbackUsed: false };
+    } catch (error) {
+      const isLastAttempt = attempt === retryCount;
+      if (isLastAttempt) {
+        await logger.warn("AI", `${stage}: error, using fallback`, {
+          error: error instanceof Error ? error.message : String(error),
+          attempts: attempt + 1,
+        });
+        return { data: fallback, latencyMs: Date.now() - started, fallbackUsed: true };
+      }
     }
-
-    const parsed = JSON.parse(rawText);
-    const validated = validator.safeParse(parsed);
-    if (!validated.success) {
-      const failure = validated as { success: false; error: { issues: unknown } };
-      await logger.warn("AI", `${stage}: schema validation failed, using fallback`, { issues: failure.error.issues });
-      return { data: fallback, latencyMs: Date.now() - started, fallbackUsed: true };
-    }
-
-    return { data: validated.data as T, latencyMs: Date.now() - started, fallbackUsed: false };
-  } catch (error) {
-    await logger.warn("AI", `${stage}: error, using fallback`, {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { data: fallback, latencyMs: Date.now() - started, fallbackUsed: true };
   }
+
+  return { data: fallback, latencyMs: Date.now() - started, fallbackUsed: true };
 }
 
 function buildFinalDecision(review: ExecutionReview): AIDecision {
@@ -492,13 +545,14 @@ export async function runAIPipeline(args: {
   const memorySummary = memories.length > 0
     ? memories.map((item, index) => `${index + 1}. ${item.summary}`).join("\n")
     : "No relevant local memories.";
+  const tradingModeLabel = buildTradingModeLabel(args.snapshot);
 
   const assessment = await callStage({
     apiKey: args.openaiApiKey,
-    model: args.engineConfig.stageModels.marketAnalyst,
+    model: resolveStageModel(args.engineConfig, "marketAnalyst"),
     stage: "market-analyst",
     systemPrompt:
-      "You are the Market Analyst for a futures trading agent. Assess the normalized market snapshot, identify regime, volatility, tempo fit, directional bias, and whether conditions justify no trade. Output JSON only.",
+      `You are the Market Analyst for a ${tradingModeLabel}. Assess the normalized market snapshot, identify regime, volatility, tempo fit, directional bias, and whether conditions justify no trade. Output JSON only.`,
     input: { snapshot: args.snapshot, memorySummary },
     schemaName: "market_assessment",
     jsonSchema: MARKET_ASSESSMENT_JSON_SCHEMA,
@@ -508,17 +562,20 @@ export async function runAIPipeline(args: {
       volatilityBucket: args.snapshot.tempoState.volatilityBucket,
       tempoFit: args.snapshot.tempoState.tempoFit,
     },
+    retryCount: args.engineConfig.aiRetryCount,
   });
 
   const proposal = await callStage({
     apiKey: args.openaiApiKey,
-    model: args.engineConfig.stageModels.tradeArchitect,
+    model: resolveStageModel(args.engineConfig, "tradeArchitect"),
     stage: "trade-architect",
     systemPrompt:
-      "You are the Trade Architect for a futures trading agent. Produce a contract-valid trade plan for the given market assessment and market snapshot. Respect the active tempo profile. Output JSON only.",
+      `You are the Trade Architect for a ${tradingModeLabel}. Produce a contract-valid trade plan for the given market assessment and market snapshot. Respect the active tempo profile and venue constraints. Output JSON only.`,
     input: { snapshot: args.snapshot, marketAssessment: assessment.data, memorySummary, preferences: {
       holdTimeBias: args.engineConfig.holdTimeBias,
       exitStylePreference: args.engineConfig.exitStylePreference,
+      trailingStopEnabled: args.engineConfig.enableTrailingStop,
+      maxTrailingStopPct: args.engineConfig.trailingStopPct,
     } },
     schemaName: "trade_proposal",
     jsonSchema: TRADE_PROPOSAL_JSON_SCHEMA,
@@ -534,19 +591,28 @@ export async function runAIPipeline(args: {
       takeProfit: args.snapshot.currentPrice || 1,
       maxHoldMinutes: args.snapshot.profile.maxHoldMinutes,
     },
+    retryCount: args.engineConfig.aiRetryCount,
   });
 
-  const review = await callStage({
+  const executionCriticModels = args.engineConfig.enableMultiModelVoting
+    ? [...new Set([resolveStageModel(args.engineConfig, "executionCritic"), ...args.engineConfig.votingModels.filter(Boolean)])]
+    : [resolveStageModel(args.engineConfig, "executionCritic")];
+  const reviewRuns = await Promise.all(executionCriticModels.map((model, index) => callStage({
     apiKey: args.openaiApiKey,
-    model: args.engineConfig.stageModels.executionCritic,
-    stage: "execution-critic",
+    model,
+    stage: `execution-critic:${model}`,
     systemPrompt:
-      "You are the Execution Critic. Challenge the trade proposal using market snapshot, exchange conditions, spread, open positions, and tempo strictness. Approve, downgrade, or convert to HOLD. Output JSON only.",
+      `You are the Execution Critic for a ${tradingModeLabel}. Challenge the trade proposal using market snapshot, exchange conditions, spread, open positions, and tempo strictness. Approve, downgrade, or convert to HOLD. Output JSON only.`,
     input: {
       snapshot: args.snapshot,
       marketAssessment: assessment.data,
       tradeProposal: proposal.data,
       critiqueStrictness: args.engineConfig.critiqueStrictness,
+      venueConstraints: {
+        enableTrailingStop: args.engineConfig.enableTrailingStop,
+        maxTrailingStopPct: args.engineConfig.trailingStopPct,
+        tradingMode: args.snapshot.mode,
+      },
     },
     schemaName: "execution_review",
     jsonSchema: EXECUTION_REVIEW_JSON_SCHEMA,
@@ -558,11 +624,15 @@ export async function runAIPipeline(args: {
       takeProfit: args.snapshot.currentPrice || 1,
       maxHoldMinutes: args.snapshot.profile.maxHoldMinutes,
     },
-  });
+    retryCount: index === 0 ? args.engineConfig.aiRetryCount : 0,
+  })));
 
   const marketAssessment = assessment.data as MarketAssessment;
   const tradeProposal = proposal.data as TradeProposal;
-  const executionReview = review.data as ExecutionReview;
+  const executionReview = applyExecutionConfig(
+    chooseExecutionReview(reviewRuns.map((run) => run.data as ExecutionReview)),
+    args.engineConfig,
+  );
   const finalDecision = buildFinalDecision(executionReview);
   const contractValid = isProposalContractValid(
     finalDecision.decision,
@@ -571,7 +641,12 @@ export async function runAIPipeline(args: {
     finalDecision.take_profit,
   );
   const status =
-    marketAssessment.noTrade || executionReview.finalAction === "HOLD" || !contractValid || assessment.fallbackUsed || proposal.fallbackUsed || review.fallbackUsed
+    marketAssessment.noTrade ||
+    executionReview.finalAction === "HOLD" ||
+    !contractValid ||
+    assessment.fallbackUsed ||
+    proposal.fallbackUsed ||
+    reviewRuns.every((run) => run.fallbackUsed)
       ? "HOLD"
       : "READY";
 
@@ -598,7 +673,7 @@ export async function runAIPipeline(args: {
       total: Date.now() - started,
       marketAnalyst: assessment.latencyMs,
       tradeArchitect: proposal.latencyMs,
-      executionCritic: review.latencyMs,
+      executionCritic: Math.max(...reviewRuns.map((run) => run.latencyMs), 0),
     },
     status,
     holdReason:
@@ -607,7 +682,7 @@ export async function runAIPipeline(args: {
           ? "Invalid final execution contract"
           : assessment.data.noTrade
             ? assessment.data.noTradeReasons.join("; ")
-            : review.data.reasons.join("; ")
+            : executionReview.reasons.join("; ")
         : undefined,
   };
 }
@@ -659,7 +734,7 @@ export async function reviewClosedTrade(args: {
     model: args.model || "gpt-5.4-mini",
     stage: "post-trade-reviewer",
     systemPrompt:
-      "You are the Post-Trade Reviewer for a futures trading agent. Review the full pipeline decision, the market context, and the realized outcome. Produce a concise runtime memory note. Output JSON only.",
+      `You are the Post-Trade Reviewer for a ${args.trade.mode === "spot" ? "spot trading agent" : "futures trading agent"}. Review the full pipeline decision, the market context, and the realized outcome. Produce a concise runtime memory note. Output JSON only.`,
     input: {
       trade: args.trade,
       pipelineRun: args.trade.pipelineRun,
@@ -834,10 +909,10 @@ export async function runSelfReview(args: {
 
   const review = await callStage({
     apiKey: args.openaiApiKey,
-    model: args.engineConfig.stageModels.postTradeReviewer,
+    model: resolveStageModel(args.engineConfig, "postTradeReviewer"),
     stage: "self-review",
     systemPrompt:
-      "You are the idle self-review analyst for a futures trading agent. Summarize recent wins, failures, and memory updates using only the supplied context. Output JSON only.",
+      `You are the idle self-review analyst for a ${args.symbol.toUpperCase()} ${args.engineConfig.tradingProfile} trading agent. Summarize recent wins, failures, and memory updates using only the supplied context. Output JSON only.`,
     input: {
       symbol,
       profile: args.engineConfig.tradingProfile,
@@ -861,6 +936,7 @@ export async function runSelfReview(args: {
     jsonSchema: SELF_REVIEW_JSON_SCHEMA,
     validator: selfReviewSchema,
     fallback,
+    retryCount: args.engineConfig.aiRetryCount,
   });
 
   let reviewId: string = randomUUID();

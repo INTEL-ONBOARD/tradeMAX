@@ -22,6 +22,10 @@ class AccountWatcher {
     this.callbacks = cb;
   }
 
+  clearCallbacks(): void {
+    this.callbacks = null;
+  }
+
   async start(userId: string): Promise<void> {
     if (this.running) return;
     if (!this.callbacks) return;
@@ -92,9 +96,12 @@ class AccountWatcher {
   }
 
   async stop(): Promise<void> {
-    if (!this.running) return;
+    const wasActive = this.running || this.exchange !== null;
+    if (!wasActive) return;
     this.cleanup();
-    await logger.info("SYSTEM", "Account watcher stopped");
+    if (wasActive) {
+      await logger.info("SYSTEM", "Account watcher stopped");
+    }
   }
 
   isRunning(): boolean {
