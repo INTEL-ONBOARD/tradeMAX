@@ -127,6 +127,118 @@ function SelectInput({ value, options, onChange }: { value: string; options: str
   );
 }
 
+function SegmentedControl({
+  value,
+  options,
+  onChange,
+  labels,
+}: {
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  labels?: Record<string, string>;
+}) {
+  return (
+    <div className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-inset)] p-1">
+      {options.map((opt) => {
+        const active = value === opt;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${active ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+          >
+            {labels?.[opt] ?? opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SliderInput({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  formatValue,
+  minLabel,
+  maxLabel,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  formatValue: (value: number) => string;
+  minLabel?: string;
+  maxLabel?: string;
+}) {
+  const [local, setLocal] = useState(value);
+  const debouncedOnChange = useDebouncedCallback(onChange, 250);
+
+  useEffect(() => { setLocal(value); }, [value]);
+
+  return (
+    <div className="w-[280px] space-y-2">
+      <div className="flex items-center justify-between gap-2 text-[10px]">
+        <span className="text-[var(--text-tertiary)]">{minLabel ?? formatValue(min)}</span>
+        <span className="px-2 py-0.5 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-primary)] font-medium">
+          {formatValue(local)}
+        </span>
+        <span className="text-[var(--text-tertiary)]">{maxLabel ?? formatValue(max)}</span>
+      </div>
+      <input
+        type="range"
+        value={local}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(e) => {
+          const next = parseFloat(e.target.value);
+          setLocal(next);
+          debouncedOnChange(next);
+        }}
+        className="w-full cursor-pointer"
+        style={{ accentColor: "var(--primary-500)" }}
+      />
+    </div>
+  );
+}
+
+function SettingsSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+      <div className="mb-2">
+        <p className="text-[13px] font-semibold text-[var(--text-primary)]">{title}</p>
+        <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">{description}</p>
+      </div>
+      <div>{children}</div>
+    </section>
+  );
+}
+
+function formatSeconds(value: number) {
+  if (value === 0) return "Off";
+  if (value < 60) return `${Math.round(value)} sec`;
+  if (value % 60 === 0) return `${Math.round(value / 60)} min`;
+  return `${(value / 60).toFixed(1)} min`;
+}
+
+function formatPercent(value: number, digits = 0) {
+  return `${value.toFixed(digits)}%`;
+}
+
 function PasswordInput({
   value,
   placeholder,
@@ -684,12 +796,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [apiTabLoading, setApiTabLoading] = useState(false);
+  const [apiTabLoadingLabel, setApiTabLoadingLabel] = useState("Loading saved keys...");
+  const [showAdvancedEngine, setShowAdvancedEngine] = useState(false);
   const [profileConfigs, setProfileConfigs] = useState<ProfileConfigRecord[]>([]);
   const [profilePresetName, setProfilePresetName] = useState("");
   const [profileActionState, setProfileActionState] = useState<"idle" | "loading" | "saving" | "applying" | "deleting">("idle");
   const [profileActionError, setProfileActionError] = useState<string | null>(null);
-  const [apiTabLoading, setApiTabLoading] = useState(false);
-  const [apiTabLoadingLabel, setApiTabLoadingLabel] = useState("Loading saved keys...");
+  const [aiModels, setAiModels] = useState<{ id: string; name: string }[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
 
   const showSaved = () => {
     setSaveStatus("saved");
@@ -730,16 +845,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const rp = settings?.riskProfile;
   const ec = settings?.engineConfig;
   const activeProfile = ec?.tradingProfile || "intraday";
-
-  const [aiModels, setAiModels] = useState<{ id: string; name: string }[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
   const riskTabLoading = activeTab === "risk" && !rp;
-  const engineTabLoading = activeTab === "engine" && (!ec || modelsLoading || profileActionState === "loading");
-  const engineTabLoadingLabel = !ec
-    ? "Loading engine configuration..."
-    : profileActionState === "loading"
-      ? "Loading saved presets..."
-      : "Loading AI models...";
+  const engineTabLoading = activeTab === "engine" && !ec;
+  const engineTabLoadingLabel = "Loading engine configuration...";
   const riskTabLoadingLabel = "Loading risk profile...";
   const activeOverlayLabel = activeTab === "api"
     ? (apiTabLoading ? apiTabLoadingLabel : null)
@@ -758,16 +866,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "engine" || aiModels.length > 0) return;
+    if (activeTab !== "engine" || !showAdvancedEngine || aiModels.length > 0) return;
     setModelsLoading(true);
-    (window as any).api.invoke(IPC.AI_LIST_MODELS)
+    window.api.invoke(IPC.AI_LIST_MODELS)
       .then((data: { id: string; name: string }[]) => setAiModels(data))
       .catch(() => {})
       .finally(() => setModelsLoading(false));
-  }, [activeTab]);
+  }, [activeTab, showAdvancedEngine, aiModels.length]);
 
   useEffect(() => {
-    if (activeTab !== "engine" || !ec) return;
+    if (activeTab !== "engine" || !showAdvancedEngine || !ec) return;
     if (!profilePresetName.trim()) {
       setProfilePresetName(`${activeProfile} preset`);
     }
@@ -781,7 +889,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setProfileConfigs([]);
       })
       .finally(() => setProfileActionState("idle"));
-  }, [activeTab, activeProfile, settings?.selectedExchange, settings?.engineConfig?.tradingProfile]);
+  }, [activeTab, showAdvancedEngine, ec, activeProfile]);
 
   const refreshProfileConfigs = async () => {
     if (!ec) return;
@@ -953,313 +1061,646 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           )}
 
           {activeTab === "risk" && (
-            <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-2">
+                <div>
                   <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
-                    Risk Engine Parameters
+                    Risk Profile
                   </h3>
-                  <button
-                    disabled
-                    className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{
-                      background: saveStatus === "saved" ? "var(--color-profit-bg)" : "var(--color-info-bg)",
-                      color: saveStatus === "saved" ? "var(--color-profit)" : "var(--color-info)",
-                      border: `1px solid ${saveStatus === "saved" ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
-                    }}
-                  >
-                    {saveStatus === "saving" ? (
-                      <><Loader2 size={11} className="animate-spin" /> Saving...</>
-                    ) : saveStatus === "saved" ? (
-                      <><CheckCircle size={11} /> Saved</>
-                    ) : (
-                      "Save"
-                    )}
-                  </button>
+                  <p className="text-[11px] text-[var(--text-tertiary)] mt-1 max-w-[32rem]">
+                    These controls define how aggressive the agent is allowed to be. Lower values make trading more conservative.
+                  </p>
                 </div>
-                {rp ? (
-                  <div>
-                    <SettingRow label="Max Risk Per Trade %" description="Maximum percentage of balance risked per trade (0.1 - 10)">
-                      <NumberInput value={rp.maxRiskPct} min={0.1} max={10} step={0.1} onChange={(v) => updateRiskProfile("maxRiskPct", v)} />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)]">
+                  {saveStatus === "saving" ? (
+                    <>
+                      <Loader2 size={11} className="animate-spin" />
+                      Saving...
+                    </>
+                  ) : saveStatus === "saved" ? (
+                    <>
+                      <CheckCircle size={11} />
+                      Saved
+                    </>
+                  ) : (
+                    "Auto-save on"
+                  )}
+                </span>
+              </div>
+              {rp ? (
+                <div className="space-y-4">
+                  <SettingsSection
+                    title="Position Size"
+                    description="How much the agent can commit to a single idea and how much leverage it may use."
+                  >
+                    <SettingRow
+                      label="Risk Per Trade"
+                      description="Maximum percentage of account balance the agent may risk on one trade."
+                    >
+                      <SliderInput
+                        value={rp.maxRiskPct}
+                        min={0.1}
+                        max={10}
+                        step={0.1}
+                        onChange={(v) => updateRiskProfile("maxRiskPct", v)}
+                        formatValue={(v) => formatPercent(v, 1)}
+                        minLabel="0.1%"
+                        maxLabel="10.0%"
+                      />
                     </SettingRow>
-                    <SettingRow label="Max Daily Loss %" description="Stop trading after this daily loss threshold (1 - 20)">
-                      <NumberInput value={rp.maxDailyLossPct} min={1} max={20} step={0.5} onChange={(v) => updateRiskProfile("maxDailyLossPct", v)} />
+                    <SettingRow
+                      label="Max Leverage"
+                      description="Upper limit for leverage used by the engine."
+                    >
+                      <SliderInput
+                        value={rp.maxLeverage}
+                        min={1}
+                        max={20}
+                        step={1}
+                        onChange={(v) => updateRiskProfile("maxLeverage", Math.round(v))}
+                        formatValue={(v) => `${Math.round(v)}x`}
+                        minLabel="1x"
+                        maxLabel="20x"
+                      />
                     </SettingRow>
-                    <SettingRow label="Max Open Positions" description="Maximum concurrent open positions (1 - 20)">
-                      <NumberInput value={rp.maxOpenPositions} min={1} max={20} step={1} onChange={(v) => updateRiskProfile("maxOpenPositions", Math.round(v))} />
+                  </SettingsSection>
+
+                  <SettingsSection
+                    title="Account Protection"
+                    description="Hard stop rules that prevent the agent from over-trading or digging a deeper loss."
+                  >
+                    <SettingRow
+                      label="Daily Loss Stop"
+                      description="Stop opening new trades after this percentage loss in one day."
+                    >
+                      <SliderInput
+                        value={rp.maxDailyLossPct}
+                        min={1}
+                        max={20}
+                        step={0.5}
+                        onChange={(v) => updateRiskProfile("maxDailyLossPct", v)}
+                        formatValue={(v) => formatPercent(v, 1)}
+                        minLabel="1.0%"
+                        maxLabel="20.0%"
+                      />
                     </SettingRow>
-                    <SettingRow label="Min AI Confidence" description="Minimum AI confidence score to execute (0 - 1)">
-                      <NumberInput value={rp.minConfidence} min={0} max={1} step={0.05} onChange={(v) => updateRiskProfile("minConfidence", v)} />
+                    <SettingRow
+                      label="Max Open Positions"
+                      description="Maximum number of trades the agent may keep open at once."
+                    >
+                      <SliderInput
+                        value={rp.maxOpenPositions}
+                        min={1}
+                        max={20}
+                        step={1}
+                        onChange={(v) => updateRiskProfile("maxOpenPositions", Math.round(v))}
+                        formatValue={(v) => `${Math.round(v)} trade${Math.round(v) === 1 ? "" : "s"}`}
+                        minLabel="1"
+                        maxLabel="20"
+                      />
                     </SettingRow>
-                    <SettingRow label="Max Leverage" description="Maximum leverage multiplier (1 - 20)">
-                      <NumberInput value={rp.maxLeverage} min={1} max={20} step={1} onChange={(v) => updateRiskProfile("maxLeverage", Math.round(v))} />
+                  </SettingsSection>
+
+                  <SettingsSection
+                    title="Signal Quality"
+                    description="How selective the agent should be before it is allowed to act on an AI decision."
+                  >
+                    <SettingRow
+                      label="Minimum Confidence"
+                      description="Higher values mean the agent will ignore weaker AI signals."
+                    >
+                      <SliderInput
+                        value={rp.minConfidence}
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        onChange={(v) => updateRiskProfile("minConfidence", v)}
+                        formatValue={(v) => `${Math.round(v * 100)}%`}
+                        minLabel="0%"
+                        maxLabel="100%"
+                      />
                     </SettingRow>
-                  </div>
-                ) : (
-                  <p className="text-[12px] text-[var(--text-tertiary)] italic">Loading risk profile...</p>
-                )}
+                  </SettingsSection>
+                </div>
+              ) : (
+                <p className="text-[12px] text-[var(--text-tertiary)] italic">Loading risk profile...</p>
+              )}
             </div>
           )}
 
           {activeTab === "engine" && (
-            <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
-                <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
-                  Engine Configuration
-                </h3>
-                <button
-                  disabled
-                  className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{
-                    background: saveStatus === "saved" ? "var(--color-profit-bg)" : "var(--color-info-bg)",
-                    color: saveStatus === "saved" ? "var(--color-profit)" : "var(--color-info)",
-                    border: `1px solid ${saveStatus === "saved" ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
-                  }}
-                >
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-2">
+                <div>
+                  <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
+                    Engine Configuration
+                  </h3>
+                  <p className="text-[11px] text-[var(--text-tertiary)] mt-1 max-w-[32rem]">
+                    Only the controls that change live trading behavior are shown here. Advanced AI model routing and internal analysis tuning now stay on system defaults.
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] text-[11px] text-[var(--text-secondary)]">
                   {saveStatus === "saving" ? (
-                    <><Loader2 size={11} className="animate-spin" /> Saving...</>
+                    <>
+                      <Loader2 size={11} className="animate-spin" />
+                      Saving...
+                    </>
                   ) : saveStatus === "saved" ? (
-                    <><CheckCircle size={11} /> Saved</>
+                    <>
+                      <CheckCircle size={11} />
+                      Saved
+                    </>
                   ) : (
-                    "Save"
+                    "Auto-save on"
                   )}
-                </button>
+                </span>
               </div>
-                {ec ? (
-                  <div>
-                  <SettingRow label="Trading Symbol" description="The trading pair symbol (e.g. BTCUSDT)">
-                    <TextInput value={ec.tradingSymbol} onChange={(v) => updateEngineConfig("tradingSymbol", v)} />
-                  </SettingRow>
-                  <SettingRow label="Active Tempo Profile" description="One active profile per running agent instance">
-                    <SelectInput value={ec.tradingProfile} options={["scalp", "intraday", "swing", "custom"]} onChange={(v) => updateEngineConfig("tradingProfile", v)} />
-                  </SettingRow>
-                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                      <div>
-                        <p className="text-[13px] font-medium text-[var(--text-primary)]">Profile Presets</p>
-                        <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
-                          Save the current engine configuration and reload it later for this tempo profile.
-                        </p>
-                      </div>
-                      <div className="px-2 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-inset)] text-[10px] font-semibold tracking-wider text-[var(--text-secondary)] uppercase">
-                        {activeProfile}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <input
-                        type="text"
-                        value={profilePresetName}
-                        onChange={(e) => setProfilePresetName(e.target.value)}
-                        placeholder={`${activeProfile} preset`}
-                        className="flex-1 px-3 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+              {ec ? (
+                <div className="space-y-4">
+                  <SettingsSection
+                    title="Trading Style"
+                    description="Choose the market pace and the pair the engine should focus on."
+                  >
+                    <SettingRow
+                      label={ec.autoPairSelection ? "Primary Pair" : "Trading Pair"}
+                      description={ec.autoPairSelection
+                        ? "Used as the default focus pair while the engine rotates through your shortlist."
+                        : "The single market pair the engine will trade."}
+                    >
+                      <TextInput
+                        value={ec.tradingSymbol}
+                        onChange={(v) => updateEngineConfig("tradingSymbol", v.toUpperCase())}
+                        className="w-40 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
                       />
-                      <button
-                        onClick={() => void handleSaveProfileConfig()}
-                        disabled={profileActionState === "saving" || !ec}
-                        className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        style={{
-                          background: "var(--color-info-bg)",
-                          color: "var(--color-info)",
-                          border: "1px solid var(--color-info-border)",
-                        }}
-                      >
-                        {profileActionState === "saving" ? "Saving..." : "Save Preset"}
-                      </button>
-                    </div>
-                    {profileActionError && (
-                      <p className="text-[11px] text-[var(--color-loss)] font-medium mb-2">
-                        {profileActionError}
+                    </SettingRow>
+                    <SettingRow
+                      label="Trading Tempo"
+                      description="Scalp reacts fastest, intraday is balanced, swing is slower and more selective."
+                    >
+                      <SegmentedControl
+                        value={ec.tradingProfile}
+                        options={["scalp", "intraday", "swing", "custom"]}
+                        labels={{ scalp: "Fast", intraday: "Balanced", swing: "Selective", custom: "Custom" }}
+                        onChange={(v) => updateEngineConfig("tradingProfile", v)}
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="Analysis Timeframe"
+                      description="Shorter candles react faster but create more noise."
+                    >
+                      <SegmentedControl
+                        value={ec.candleTimeframe}
+                        options={["1m", "5m", "15m"]}
+                        labels={{ "1m": "1 min", "5m": "5 min", "15m": "15 min" }}
+                        onChange={(v) => updateEngineConfig("candleTimeframe", v)}
+                      />
+                    </SettingRow>
+                  </SettingsSection>
+
+                  <SettingsSection
+                    title="Pair Selection"
+                    description="Control whether the engine stays on one pair or rotates through a shortlist."
+                  >
+                    <SettingRow
+                      label="Auto-Rotate Pairs"
+                      description="Let the engine score your shortlist and switch to the strongest pair automatically."
+                    >
+                      <Toggle checked={ec.autoPairSelection} onChange={(v) => updateEngineConfig("autoPairSelection", v)} />
+                    </SettingRow>
+                    {ec.autoPairSelection ? (
+                      <>
+                        <SettingRow
+                          label="Candidate Pairs"
+                          description="Comma-separated shortlist the engine may rotate across."
+                        >
+                          <TextInput
+                            value={(ec.candidateSymbols ?? ec.watchlist ?? []).join(", ")}
+                            onChange={(v) => updateEngineConfig("candidateSymbols", v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))}
+                            className="w-[280px] px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+                          />
+                        </SettingRow>
+                        <SettingRow
+                          label="Max Active Pairs"
+                          description="Maximum number of pairs the engine may keep open at the same time."
+                        >
+                          <SliderInput
+                            value={ec.maxConcurrentSymbols}
+                            min={1}
+                            max={10}
+                            step={1}
+                            onChange={(v) => updateEngineConfig("maxConcurrentSymbols", Math.round(v))}
+                            formatValue={(v) => `${Math.round(v)} pair${Math.round(v) === 1 ? "" : "s"}`}
+                            minLabel="1 pair"
+                            maxLabel="10 pairs"
+                          />
+                        </SettingRow>
+                      </>
+                    ) : (
+                      <p className="pt-1 text-[11px] italic text-[var(--text-tertiary)]">
+                        Single-pair mode is on. The engine will stay on your selected trading pair.
                       </p>
                     )}
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {profileActionState === "loading" ? (
-                        <p className="text-[11px] text-[var(--text-tertiary)] italic">Loading saved presets...</p>
-                      ) : profileConfigs.length > 0 ? (
-                        profileConfigs.map((config) => (
-                          <div key={config._id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-inset)] px-3 py-2">
-                            <div>
-                              <p className="text-[12px] font-medium text-[var(--text-primary)]">{config.name}</p>
-                              <p className="text-[10px] text-[var(--text-tertiary)]">
-                                {new Date(config.updatedAt).toLocaleString()} · {config.profile}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => void handleApplyProfileConfig(config._id)}
-                                disabled={profileActionState === "applying" || profileActionState === "deleting" || profileActionState === "saving"}
-                                className="px-2.5 py-1 text-[10px] font-medium rounded-md border border-[var(--color-profit-border)] bg-[var(--color-profit-bg)] text-[var(--color-profit)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                Load
-                              </button>
-                              <button
-                                onClick={() => void handleDeleteProfileConfig(config._id)}
-                                disabled={profileActionState === "applying" || profileActionState === "deleting" || profileActionState === "saving"}
-                                className="px-2.5 py-1 text-[10px] font-medium rounded-md border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)] text-[var(--color-loss)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-[11px] text-[var(--text-tertiary)] italic">No saved presets for this profile yet.</p>
-                      )}
-                    </div>
-                  </div>
-                  <SettingRow label="Portfolio AI Selection" description="Let the agent rank and rotate across the configured candidate universe">
-                    <Toggle checked={ec.autoPairSelection} onChange={(v) => updateEngineConfig("autoPairSelection", v)} />
-                  </SettingRow>
-                  <SettingRow label="Candidate Symbols" description="Comma-separated symbols the portfolio agent can score and trade">
-                    <TextInput
-                      value={(ec.candidateSymbols ?? ec.watchlist ?? []).join(", ")}
-                      onChange={(v) => updateEngineConfig("candidateSymbols", v.split(",").map((s) => s.trim()).filter(Boolean))}
-                      className="w-64 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
-                    />
-                  </SettingRow>
-                  <SettingRow label="Max Concurrent Symbols" description="Maximum portfolio slots the AI may keep open at the same time">
-                    <NumberInput value={ec.maxConcurrentSymbols} min={1} max={10} step={1} onChange={(v) => updateEngineConfig("maxConcurrentSymbols", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Symbol Re-entry Cooldown (sec)" description="Minimum wait after a symbol exits before the AI can re-enter it">
-                    <NumberInput value={ec.symbolReentryCooldownSec} min={0} max={3600} step={15} onChange={(v) => updateEngineConfig("symbolReentryCooldownSec", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Loop Interval (sec)" description="Seconds between each trading loop iteration (3 - 120)">
-                    <NumberInput value={ec.loopIntervalSec} min={3} max={120} step={1} onChange={(v) => updateEngineConfig("loopIntervalSec", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Candle Timeframe" description="Candlestick timeframe for analysis">
-                    <SelectInput value={ec.candleTimeframe} options={["1m", "5m", "15m"]} onChange={(v) => updateEngineConfig("candleTimeframe", v)} />
-                  </SettingRow>
-                  <SettingRow label="Max Slippage %" description="Maximum allowed slippage on orders (0.01 - 5)">
-                    <NumberInput value={ec.maxSlippagePct} min={0.01} max={5} step={0.01} onChange={(v) => updateEngineConfig("maxSlippagePct", v)} />
-                  </SettingRow>
-                  <SettingRow label="Trade Cooldown (sec)" description="Minimum seconds between consecutive trades (0 - 600)">
-                    <NumberInput value={ec.tradeCooldownSec} min={0} max={600} step={5} onChange={(v) => updateEngineConfig("tradeCooldownSec", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="AI Retry Count" description="Number of retries on AI analysis failure (0 - 5)">
-                    <NumberInput value={ec.aiRetryCount} min={0} max={5} step={1} onChange={(v) => updateEngineConfig("aiRetryCount", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="AI Model" description="AI model identifier for trade analysis">
-                    {modelsLoading ? (
-                      <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
-                        <Loader2 size={12} className="animate-spin" /> Loading models...
-                      </span>
-                    ) : (
-                      <SelectInput
-                        value={ec.aiModel}
-                        options={aiModels.length > 0
-                          ? aiModels.map((m) => m.id)
-                          : [ec.aiModel]
-                        }
-                        onChange={(v) => updateEngineConfig("aiModel", v)}
+                  </SettingsSection>
+
+                  <SettingsSection
+                    title="Automation Pace"
+                    description="Set how often the engine checks the market and how quickly it is allowed to trade again."
+                  >
+                    <SettingRow
+                      label="Market Check Frequency"
+                      description="How often the engine scans the market and makes a fresh decision."
+                    >
+                      <SliderInput
+                        value={ec.loopIntervalSec}
+                        min={3}
+                        max={120}
+                        step={1}
+                        onChange={(v) => updateEngineConfig("loopIntervalSec", Math.round(v))}
+                        formatValue={formatSeconds}
+                        minLabel="3 sec"
+                        maxLabel="2 min"
                       />
+                    </SettingRow>
+                    <SettingRow
+                      label="Cooldown After Any Trade"
+                      description="Minimum wait time before the next trade can open."
+                    >
+                      <SliderInput
+                        value={ec.tradeCooldownSec}
+                        min={0}
+                        max={600}
+                        step={5}
+                        onChange={(v) => updateEngineConfig("tradeCooldownSec", Math.round(v))}
+                        formatValue={formatSeconds}
+                        minLabel="Off"
+                        maxLabel="10 min"
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="Same-Pair Re-Entry Delay"
+                      description="How long to wait before opening another trade on a pair that just closed."
+                    >
+                      <SliderInput
+                        value={ec.symbolReentryCooldownSec}
+                        min={0}
+                        max={3600}
+                        step={15}
+                        onChange={(v) => updateEngineConfig("symbolReentryCooldownSec", Math.round(v))}
+                        formatValue={formatSeconds}
+                        minLabel="Off"
+                        maxLabel="60 min"
+                      />
+                    </SettingRow>
+                  </SettingsSection>
+
+                  <SettingsSection
+                    title="Safety Limits"
+                    description="These are the main protection rails that decide when the engine should skip or pause trading."
+                  >
+                    <SettingRow
+                      label="Max Order Slippage"
+                      description="Skip entries if the expected fill drifts too far from the signal price."
+                    >
+                      <SliderInput
+                        value={ec.maxSlippagePct}
+                        min={0.01}
+                        max={5}
+                        step={0.01}
+                        onChange={(v) => updateEngineConfig("maxSlippagePct", v)}
+                        formatValue={(v) => formatPercent(v, 2)}
+                        minLabel="0.01%"
+                        maxLabel="5.00%"
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="Drawdown Pause Level"
+                      description="Pause the engine when account drawdown reaches this level."
+                    >
+                      <SliderInput
+                        value={ec.maxDrawdownPct}
+                        min={1}
+                        max={50}
+                        step={1}
+                        onChange={(v) => updateEngineConfig("maxDrawdownPct", Math.round(v))}
+                        formatValue={(v) => formatPercent(v)}
+                        minLabel="1%"
+                        maxLabel="50%"
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="Volatility Ceiling"
+                      description="Avoid entries when the market is moving too violently."
+                    >
+                      <SliderInput
+                        value={ec.volatilityThresholdPct}
+                        min={0.5}
+                        max={20}
+                        step={0.5}
+                        onChange={(v) => updateEngineConfig("volatilityThresholdPct", v)}
+                        formatValue={(v) => formatPercent(v, 1)}
+                        minLabel="0.5%"
+                        maxLabel="20.0%"
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="Spread Ceiling"
+                      description="Avoid entries when the bid/ask spread is too wide."
+                    >
+                      <SliderInput
+                        value={ec.spreadThresholdPct}
+                        min={0.01}
+                        max={5}
+                        step={0.01}
+                        onChange={(v) => updateEngineConfig("spreadThresholdPct", v)}
+                        formatValue={(v) => formatPercent(v, 2)}
+                        minLabel="0.01%"
+                        maxLabel="5.00%"
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="Loss Streak Pause"
+                      description="Pause the engine after this many losing trades in a row."
+                    >
+                      <SliderInput
+                        value={ec.maxConsecutiveLosses}
+                        min={1}
+                        max={20}
+                        step={1}
+                        onChange={(v) => updateEngineConfig("maxConsecutiveLosses", Math.round(v))}
+                        formatValue={(v) => `${Math.round(v)} loss${Math.round(v) === 1 ? "" : "es"}`}
+                        minLabel="1"
+                        maxLabel="20"
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label="Use Trailing Stop"
+                      description="Move the stop with the trade once price moves in your favor."
+                    >
+                      <Toggle checked={ec.enableTrailingStop} onChange={(v) => updateEngineConfig("enableTrailingStop", v)} />
+                    </SettingRow>
+                    {ec.enableTrailingStop && (
+                      <SettingRow
+                        label="Trailing Stop Distance"
+                        description="How much room the trailing stop gives the market."
+                      >
+                        <SliderInput
+                          value={ec.trailingStopPct}
+                          min={0.1}
+                          max={10}
+                          step={0.1}
+                          onChange={(v) => updateEngineConfig("trailingStopPct", v)}
+                          formatValue={(v) => formatPercent(v, 1)}
+                          minLabel="0.1%"
+                          maxLabel="10.0%"
+                        />
+                      </SettingRow>
                     )}
-                  </SettingRow>
-                  <SettingRow label="Market Analyst Model" description="Stage-specific model for regime and no-trade assessment">
-                    <SelectInput
-                      value={ec.stageModels.marketAnalyst}
-                      options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.marketAnalyst]}
-                      onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, marketAnalyst: v } as any)}
-                    />
-                  </SettingRow>
-                  <SettingRow label="Trade Architect Model" description="Stage-specific model for trade design and sizing">
-                    <SelectInput
-                      value={ec.stageModels.tradeArchitect}
-                      options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.tradeArchitect]}
-                      onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, tradeArchitect: v } as any)}
-                    />
-                  </SettingRow>
-                  <SettingRow label="Execution Critic Model" description="Stage-specific model for approval or HOLD conversion">
-                    <SelectInput
-                      value={ec.stageModels.executionCritic}
-                      options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.executionCritic]}
-                      onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, executionCritic: v } as any)}
-                    />
-                  </SettingRow>
-                  <SettingRow label="Reviewer Model" description="Stage-specific model for post-trade review memory">
-                    <SelectInput
-                      value={ec.stageModels.postTradeReviewer}
-                      options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.postTradeReviewer]}
-                      onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, postTradeReviewer: v } as any)}
-                    />
-                  </SettingRow>
-                  <SettingRow label="Memory Retrieval Count" description="How many local cases to retrieve into each cycle">
-                    <NumberInput value={ec.memoryRetrievalCount} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("memoryRetrievalCount", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Memory Lookback Days" description="How far back local memory retrieval searches">
-                    <NumberInput value={ec.memoryLookbackDays} min={1} max={365} step={1} onChange={(v) => updateEngineConfig("memoryLookbackDays", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Performance Lookback Days" description="Recent trade window used when scoring candidate symbols">
-                    <NumberInput value={ec.performanceLookbackDays} min={1} max={180} step={1} onChange={(v) => updateEngineConfig("performanceLookbackDays", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Min Symbol Sample Size" description="Minimum closed trades before a symbol's win rate can gate future selection">
-                    <NumberInput value={ec.minSymbolSampleSize} min={1} max={50} step={1} onChange={(v) => updateEngineConfig("minSymbolSampleSize", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Min Symbol Win Rate" description="Symbols below this realized win rate are suppressed once enough samples exist">
-                    <NumberInput value={ec.minSymbolWinRate} min={0} max={1} step={0.05} onChange={(v) => updateEngineConfig("minSymbolWinRate", v)} />
-                  </SettingRow>
-                  <SettingRow label="Critique Strictness" description="How aggressively the execution critic downgrades trades">
-                    <SelectInput value={ec.critiqueStrictness} options={["low", "balanced", "high"]} onChange={(v) => updateEngineConfig("critiqueStrictness", v)} />
-                  </SettingRow>
-                  <SettingRow label="Hold-Time Bias" description="Bias the agent toward shorter or longer trade duration">
-                    <SelectInput value={ec.holdTimeBias} options={["shorter", "balanced", "longer"]} onChange={(v) => updateEngineConfig("holdTimeBias", v)} />
-                  </SettingRow>
-                  <SettingRow label="Exit Style Preference" description="Bias the architect toward fixed, trailing, or hybrid exits">
-                    <SelectInput value={ec.exitStylePreference} options={["fixed", "trailing", "hybrid", "balanced"]} onChange={(v) => updateEngineConfig("exitStylePreference", v)} />
-                  </SettingRow>
-                  <SettingRow label="Review Mode" description="Run the post-trade reviewer and idle self-review to update local memory">
-                    <Toggle checked={ec.reviewModeEnabled} onChange={(v) => updateEngineConfig("reviewModeEnabled", v)} />
-                  </SettingRow>
-                  <SettingRow label="Shadow Mode" description="Run the full staged pipeline live without sending orders">
-                    <Toggle checked={ec.shadowModeEnabled} onChange={(v) => updateEngineConfig("shadowModeEnabled", v)} />
-                  </SettingRow>
-                  <SettingRow label="Enable Multi-Model Voting" description="Use multiple AI models and aggregate their signals">
-                    <Toggle checked={ec.enableMultiModelVoting} onChange={(v) => updateEngineConfig("enableMultiModelVoting", v)} />
-                  </SettingRow>
-                  <SettingRow label="Voting Models" description="Comma-separated list of model IDs for voting">
-                    <TextInput
-                      value={(ec.votingModels ?? []).join(", ")}
-                      onChange={(v) => updateEngineConfig("votingModels", v.split(",").map((s) => s.trim()).filter(Boolean))}
-                    />
-                  </SettingRow>
-                  <SettingRow label="Max Consecutive Losses" description="Freeze after this many consecutive losing trades (1 - 20)">
-                    <NumberInput value={ec.maxConsecutiveLosses} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("maxConsecutiveLosses", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Max Drawdown %" description="Maximum portfolio drawdown before freeze (1 - 50)">
-                    <NumberInput value={ec.maxDrawdownPct} min={1} max={50} step={1} onChange={(v) => updateEngineConfig("maxDrawdownPct", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Volatility Threshold %" description="Skip trades when volatility exceeds this (0.5 - 20)">
-                    <NumberInput value={ec.volatilityThresholdPct} min={0.5} max={20} step={0.5} onChange={(v) => updateEngineConfig("volatilityThresholdPct", v)} />
-                  </SettingRow>
-                  <SettingRow label="Spread Threshold %" description="Skip trades when spread exceeds this (0.01 - 5)">
-                    <NumberInput value={ec.spreadThresholdPct} min={0.01} max={5} step={0.01} onChange={(v) => updateEngineConfig("spreadThresholdPct", v)} />
-                  </SettingRow>
-                  <SettingRow label="WS Reconnect Retries" description="WebSocket reconnection attempts before giving up (1 - 20)">
-                    <NumberInput value={ec.wsReconnectRetries} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("wsReconnectRetries", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Enable EMA" description="Include EMA indicator in AI analysis">
-                    <Toggle checked={ec.enableEMA} onChange={(v) => updateEngineConfig("enableEMA", v)} />
-                  </SettingRow>
-                  <SettingRow label="Enable Bollinger Bands" description="Include Bollinger Bands indicator in AI analysis">
-                    <Toggle checked={ec.enableBollingerBands} onChange={(v) => updateEngineConfig("enableBollingerBands", v)} />
-                  </SettingRow>
-                  <SettingRow label="Enable ADX" description="Include ADX trend-strength analysis">
-                    <Toggle checked={ec.enableADX} onChange={(v) => updateEngineConfig("enableADX", v)} />
-                  </SettingRow>
-                  <SettingRow label="Enable ATR" description="Include ATR volatility analysis">
-                    <Toggle checked={ec.enableATR} onChange={(v) => updateEngineConfig("enableATR", v)} />
-                  </SettingRow>
-                  <SettingRow label="Enable Stochastic" description="Include stochastic momentum analysis">
-                    <Toggle checked={ec.enableStochastic} onChange={(v) => updateEngineConfig("enableStochastic", v)} />
-                  </SettingRow>
-                  <SettingRow label="Enable Trailing Stop" description="Raise or lower stop levels as the market moves in your favor">
-                    <Toggle checked={ec.enableTrailingStop} onChange={(v) => updateEngineConfig("enableTrailingStop", v)} />
-                  </SettingRow>
-                  <SettingRow label="Trailing Stop %" description="Trailing stop distance used when trailing stops are enabled (0.1 - 10)">
-                    <NumberInput value={ec.trailingStopPct} min={0.1} max={10} step={0.1} onChange={(v) => updateEngineConfig("trailingStopPct", v)} />
-                  </SettingRow>
-                  <SettingRow label="Paper Starting Balance" description="Starting account balance for local paper trading (100 - 1,000,000)">
-                    <NumberInput value={ec.paperStartingBalance} min={100} max={1000000} step={100} onChange={(v) => updateEngineConfig("paperStartingBalance", Math.round(v))} />
-                  </SettingRow>
+                  </SettingsSection>
+
+                  <SettingsSection
+                    title="Extra Modes"
+                    description="Optional modes for learning from closed trades or practicing without sending real orders."
+                  >
+                    <SettingRow
+                      label="Review Closed Trades"
+                      description="Let the app review completed trades and update local learning memory."
+                    >
+                      <Toggle checked={ec.reviewModeEnabled} onChange={(v) => updateEngineConfig("reviewModeEnabled", v)} />
+                    </SettingRow>
+                    <SettingRow
+                      label="Practice Without Sending Orders"
+                      description="Run the live decision engine but block all exchange orders."
+                    >
+                      <Toggle checked={ec.shadowModeEnabled} onChange={(v) => updateEngineConfig("shadowModeEnabled", v)} />
+                    </SettingRow>
+                    {settings?.selectedExchange === "paper" && (
+                      <SettingRow
+                        label="Paper Account Starting Balance"
+                        description="Starting balance used for local paper trading."
+                      >
+                        <NumberInput
+                          value={ec.paperStartingBalance}
+                          min={100}
+                          max={1000000}
+                          step={100}
+                          onChange={(v) => updateEngineConfig("paperStartingBalance", Math.round(v))}
+                        />
+                      </SettingRow>
+                    )}
+                  </SettingsSection>
+
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[13px] font-semibold text-[var(--text-primary)]">Advanced Engine Controls</p>
+                        <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 max-w-[30rem]">
+                          Hidden by default because these controls tune the internal AI pipeline and scoring logic, not the everyday trading experience.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedEngine((prev) => !prev)}
+                        className="px-3 py-1.5 text-[11px] font-medium rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-overlay)]"
+                      >
+                        {showAdvancedEngine ? "Hide Advanced" : "Show Advanced"}
+                      </button>
+                    </div>
+
+                    {showAdvancedEngine && (
+                      <div className="mt-3 space-y-4 border-t border-[var(--border)] pt-3">
+                        <SettingsSection
+                          title="Profile Presets"
+                          description="Save a full engine setup and re-apply it later for this trading tempo."
+                        >
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <div className="px-2 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-inset)] text-[10px] font-semibold tracking-wider text-[var(--text-secondary)] uppercase">
+                              {activeProfile}
+                            </div>
+                            {profileActionState === "loading" && (
+                              <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
+                                <Loader2 size={12} className="animate-spin" />
+                                Loading presets...
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <input
+                              type="text"
+                              value={profilePresetName}
+                              onChange={(e) => setProfilePresetName(e.target.value)}
+                              placeholder={`${activeProfile} preset`}
+                              className="flex-1 px-3 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+                            />
+                            <button
+                              onClick={() => void handleSaveProfileConfig()}
+                              disabled={profileActionState === "saving" || !ec}
+                              className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              style={{
+                                background: "var(--color-info-bg)",
+                                color: "var(--color-info)",
+                                border: "1px solid var(--color-info-border)",
+                              }}
+                            >
+                              {profileActionState === "saving" ? "Saving..." : "Save Preset"}
+                            </button>
+                          </div>
+                          {profileActionError && (
+                            <p className="text-[11px] text-[var(--color-loss)] font-medium mb-2">
+                              {profileActionError}
+                            </p>
+                          )}
+                          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                            {profileConfigs.length > 0 ? (
+                              profileConfigs.map((config) => (
+                                <div key={config._id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-inset)] px-3 py-2">
+                                  <div>
+                                    <p className="text-[12px] font-medium text-[var(--text-primary)]">{config.name}</p>
+                                    <p className="text-[10px] text-[var(--text-tertiary)]">
+                                      {new Date(config.updatedAt).toLocaleString()} · {config.profile}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => void handleApplyProfileConfig(config._id)}
+                                      disabled={profileActionState === "applying" || profileActionState === "deleting" || profileActionState === "saving"}
+                                      className="px-2.5 py-1 text-[10px] font-medium rounded-md border border-[var(--color-profit-border)] bg-[var(--color-profit-bg)] text-[var(--color-profit)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                      Load
+                                    </button>
+                                    <button
+                                      onClick={() => void handleDeleteProfileConfig(config._id)}
+                                      disabled={profileActionState === "applying" || profileActionState === "deleting" || profileActionState === "saving"}
+                                      className="px-2.5 py-1 text-[10px] font-medium rounded-md border border-[var(--color-loss-border)] bg-[var(--color-loss-bg)] text-[var(--color-loss)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-[11px] text-[var(--text-tertiary)] italic">No saved presets for this profile yet.</p>
+                            )}
+                          </div>
+                        </SettingsSection>
+
+                        <SettingsSection
+                          title="AI Model Routing"
+                          description="Control which models handle analysis, planning, execution review, and post-trade learning."
+                        >
+                          <SettingRow label="AI Retry Count" description="How many times to retry an AI step when it fails.">
+                            <NumberInput value={ec.aiRetryCount} min={0} max={5} step={1} onChange={(v) => updateEngineConfig("aiRetryCount", Math.round(v))} />
+                          </SettingRow>
+                          <SettingRow label="Primary AI Model" description="Default model used for the trading decision pipeline.">
+                            {modelsLoading ? (
+                              <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
+                                <Loader2 size={12} className="animate-spin" /> Loading models...
+                              </span>
+                            ) : (
+                              <SelectInput
+                                value={ec.aiModel}
+                                options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.aiModel]}
+                                onChange={(v) => updateEngineConfig("aiModel", v)}
+                              />
+                            )}
+                          </SettingRow>
+                          <SettingRow label="Market Analyst Model" description="Model used to judge market regime and no-trade conditions.">
+                            <SelectInput
+                              value={ec.stageModels.marketAnalyst}
+                              options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.marketAnalyst]}
+                              onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, marketAnalyst: v })}
+                            />
+                          </SettingRow>
+                          <SettingRow label="Trade Architect Model" description="Model used to design entries, stops, and targets.">
+                            <SelectInput
+                              value={ec.stageModels.tradeArchitect}
+                              options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.tradeArchitect]}
+                              onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, tradeArchitect: v })}
+                            />
+                          </SettingRow>
+                          <SettingRow label="Execution Critic Model" description="Model used for final approval or HOLD conversion.">
+                            <SelectInput
+                              value={ec.stageModels.executionCritic}
+                              options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.executionCritic]}
+                              onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, executionCritic: v })}
+                            />
+                          </SettingRow>
+                          <SettingRow label="Post-Trade Reviewer Model" description="Model used for after-action review and learning memory updates.">
+                            <SelectInput
+                              value={ec.stageModels.postTradeReviewer}
+                              options={aiModels.length > 0 ? aiModels.map((m) => m.id) : [ec.stageModels.postTradeReviewer]}
+                              onChange={(v) => updateEngineConfig("stageModels", { ...ec.stageModels, postTradeReviewer: v })}
+                            />
+                          </SettingRow>
+                        </SettingsSection>
+
+                        <SettingsSection
+                          title="Selection And Memory Tuning"
+                          description="Fine-tune how much trade history and local memory affect symbol ranking and AI context."
+                        >
+                          <SettingRow label="Memory Retrieval Count" description="Number of prior cases pulled into each AI cycle.">
+                            <NumberInput value={ec.memoryRetrievalCount} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("memoryRetrievalCount", Math.round(v))} />
+                          </SettingRow>
+                          <SettingRow label="Memory Lookback Days" description="How far back local AI memory search is allowed to go.">
+                            <NumberInput value={ec.memoryLookbackDays} min={1} max={365} step={1} onChange={(v) => updateEngineConfig("memoryLookbackDays", Math.round(v))} />
+                          </SettingRow>
+                          <SettingRow label="Performance Lookback Days" description="Recent trade window used to score candidate pairs.">
+                            <NumberInput value={ec.performanceLookbackDays} min={1} max={180} step={1} onChange={(v) => updateEngineConfig("performanceLookbackDays", Math.round(v))} />
+                          </SettingRow>
+                          <SettingRow label="Minimum Sample Size" description="Closed trades needed before a pair’s win rate is enforced.">
+                            <NumberInput value={ec.minSymbolSampleSize} min={1} max={50} step={1} onChange={(v) => updateEngineConfig("minSymbolSampleSize", Math.round(v))} />
+                          </SettingRow>
+                          <SettingRow label="Minimum Pair Win Rate" description="Pairs below this win rate get suppressed once enough history exists.">
+                            <NumberInput value={ec.minSymbolWinRate} min={0} max={1} step={0.05} onChange={(v) => updateEngineConfig("minSymbolWinRate", v)} />
+                          </SettingRow>
+                          <SettingRow label="Critique Strictness" description="How aggressively the execution critic downgrades ideas.">
+                            <SelectInput value={ec.critiqueStrictness} options={["low", "balanced", "high"]} onChange={(v) => updateEngineConfig("critiqueStrictness", v)} />
+                          </SettingRow>
+                          <SettingRow label="Hold-Time Bias" description="Bias the system toward shorter or longer holding periods.">
+                            <SelectInput value={ec.holdTimeBias} options={["shorter", "balanced", "longer"]} onChange={(v) => updateEngineConfig("holdTimeBias", v)} />
+                          </SettingRow>
+                          <SettingRow label="Exit Style Preference" description="Bias the system toward fixed, trailing, or hybrid exits.">
+                            <SelectInput value={ec.exitStylePreference} options={["fixed", "trailing", "hybrid", "balanced"]} onChange={(v) => updateEngineConfig("exitStylePreference", v)} />
+                          </SettingRow>
+                        </SettingsSection>
+
+                        <SettingsSection
+                          title="Indicators And Reliability"
+                          description="Low-level analysis inputs and fallback controls. Change these only if you know the impact."
+                        >
+                          <SettingRow label="Enable Multi-Model Voting" description="Use multiple AI models and combine their signals.">
+                            <Toggle checked={ec.enableMultiModelVoting} onChange={(v) => updateEngineConfig("enableMultiModelVoting", v)} />
+                          </SettingRow>
+                          <SettingRow label="Voting Models" description="Comma-separated model IDs used when voting is enabled.">
+                            <TextInput
+                              value={(ec.votingModels ?? []).join(", ")}
+                              onChange={(v) => updateEngineConfig("votingModels", v.split(",").map((s) => s.trim()).filter(Boolean))}
+                              className="w-[320px] px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+                            />
+                          </SettingRow>
+                          <SettingRow label="Websocket Reconnect Retries" description="Reconnect attempts before live streaming gives up.">
+                            <NumberInput value={ec.wsReconnectRetries} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("wsReconnectRetries", Math.round(v))} />
+                          </SettingRow>
+                          <SettingRow label="EMA Indicator" description="Include exponential moving averages in analysis.">
+                            <Toggle checked={ec.enableEMA} onChange={(v) => updateEngineConfig("enableEMA", v)} />
+                          </SettingRow>
+                          <SettingRow label="Bollinger Bands" description="Include Bollinger Band ranges in analysis.">
+                            <Toggle checked={ec.enableBollingerBands} onChange={(v) => updateEngineConfig("enableBollingerBands", v)} />
+                          </SettingRow>
+                          <SettingRow label="ADX Indicator" description="Include ADX trend-strength analysis.">
+                            <Toggle checked={ec.enableADX} onChange={(v) => updateEngineConfig("enableADX", v)} />
+                          </SettingRow>
+                          <SettingRow label="ATR Indicator" description="Include ATR volatility analysis.">
+                            <Toggle checked={ec.enableATR} onChange={(v) => updateEngineConfig("enableATR", v)} />
+                          </SettingRow>
+                          <SettingRow label="Stochastic Indicator" description="Include stochastic momentum analysis.">
+                            <Toggle checked={ec.enableStochastic} onChange={(v) => updateEngineConfig("enableStochastic", v)} />
+                          </SettingRow>
+                        </SettingsSection>
+                      </div>
+                    )}
                   </div>
-                ) : (
+                </div>
+              ) : (
                   <p className="text-[12px] text-[var(--text-tertiary)] italic">Loading engine config...</p>
                 )}
             </div>
