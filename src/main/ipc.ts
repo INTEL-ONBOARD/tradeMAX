@@ -54,6 +54,36 @@ const windowRuntime = createWindowRuntime((reason) => teardownMainProcessStreams
 
 const send = (channel: string, data: unknown) => windowRuntime.safeSend(channel, data);
 
+async function fetchTickerPriceMap(mode: "spot" | "futures", symbols: string[]): Promise<Record<string, number>> {
+  if (!symbols.length) return {};
+  try {
+    const category = mode === "spot" ? "spot" : "linear";
+    const response = await fetch(`https://api.bybit.com/v5/market/tickers?category=${category}`);
+    if (!response.ok) return {};
+    const data = await response.json() as {
+      result?: {
+        list?: Array<{ symbol?: string; lastPrice?: string }>;
+      };
+    };
+
+    const allowed = new Set(symbols.map((s) => s.toUpperCase()));
+    const out: Record<string, number> = {};
+
+    for (const item of data.result?.list ?? []) {
+      const symbol = String(item.symbol || "").toUpperCase();
+      if (!allowed.has(symbol)) continue;
+      const price = Number.parseFloat(String(item.lastPrice ?? ""));
+      if (Number.isFinite(price) && price > 0) {
+        out[symbol] = price;
+      }
+    }
+
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 function bindAccountWatcherCallbacks(): void {
   accountWatcher.setCallbacks({
     onPortfolio: (snap) => {
@@ -696,23 +726,30 @@ export function registerIpcHandlers(): void {
   });
 
   // ─── Exchange Pairs ──────────────────────────────────
-  ipcMain.handle(IPC.EXCHANGE_PAIRS, async () => {
+  ipcMain.handle(IPC.EXCHANGE_PAIRS, async (_event, payload) => {
     if (!currentUserId) throw new Error("Not authenticated");
 
     const user = await auth.getUserDoc(currentUserId);
     const selectedExchange = user.selectedExchange;
+    const requestedMode = (payload as { mode?: "spot" | "futures" } | undefined)?.mode;
+    const mode: "spot" | "futures" = requestedMode === "spot" || requestedMode === "futures"
+      ? requestedMode
+      : user.tradingMode;
 
     // Paper mode uses hardcoded pairs, no keys needed
     if (selectedExchange === "paper") {
+      const pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "DOTUSDT", "MATICUSDT", "LINKUSDT", "LTCUSDT"];
+      const prices = await fetchTickerPriceMap(mode, pairs);
       return {
         configured: true,
-        pairs: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "DOTUSDT", "MATICUSDT", "LINKUSDT", "LTCUSDT"],
+        pairs,
+        prices,
       };
     }
 
     const keys = user.exchangeKeys[selectedExchange];
     if (!keys.apiKey || !keys.apiSecret) {
-      return { configured: false, pairs: [] };
+      return { configured: false, pairs: [], prices: {} };
     }
 
     try {
@@ -721,14 +758,15 @@ export function registerIpcHandlers(): void {
       const decryptedSecret = decrypt(keys.apiSecret, userSalt);
 
       const exchange = createExchangeService(selectedExchange);
-      await exchange.initialize({ apiKey: decryptedKey, apiSecret: decryptedSecret }, user.tradingMode);
+      await exchange.initialize({ apiKey: decryptedKey, apiSecret: decryptedSecret }, mode);
 
       const pairs = await exchange.getSymbols();
+      const prices = await fetchTickerPriceMap(mode, pairs);
       exchange.destroy();
-      return { configured: true, pairs };
+      return { configured: true, pairs, prices };
     } catch (err) {
       await logger.error("SYSTEM", `Failed to fetch exchange pairs: ${err}`);
-      return { configured: true, pairs: [] };
+      return { configured: true, pairs: [], prices: {} };
     }
   });
 
