@@ -49,6 +49,7 @@ export const openaiKeySchema = z.object({
 export const engineConfigSchema = z.object({
   tradingSymbol: z.string().min(1).max(20).toUpperCase().optional(),
   autoPairSelection: z.boolean().optional(),
+  restrictAutoPairSelectionToShortlist: z.boolean().optional(),
   candidateSymbols: z.array(z.string().min(1).max(20).toUpperCase()).max(20).optional(),
   tradingProfile: z.enum(["scalp", "intraday", "swing", "custom"]).optional(),
   loopIntervalSec: z.number().min(3).max(120).optional(),

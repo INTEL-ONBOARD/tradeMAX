@@ -72,6 +72,10 @@ function resolveConfiguredSymbols(engineConfig: EngineConfig, requestedSymbol: s
     return [requested];
   }
 
+  if (!engineConfig.restrictAutoPairSelectionToShortlist) {
+    return [requested];
+  }
+
   return normalizeSymbols([
     requested,
     ...(engineConfig.candidateSymbols ?? []),
@@ -140,6 +144,18 @@ export class TradeEngine {
     };
   }
 
+  private async ensureSymbolMetadata(symbols: string[]): Promise<void> {
+    if (!this.exchange) return;
+    const normalized = normalizeSymbols(symbols);
+    const missing = normalized.filter((symbol) => !this.symbolMetadata.has(symbol));
+    if (missing.length === 0) return;
+
+    const rows = await this.exchange.getSymbolMetadata(missing);
+    for (const metadata of rows) {
+      this.symbolMetadata.set(metadata.symbol, metadata);
+    }
+  }
+
   async start(userId: string, symbol: string): Promise<void> {
     if (this.running) return;
 
@@ -201,15 +217,6 @@ export class TradeEngine {
       this.exchange.setStartingBalance(this.engineConfig.paperStartingBalance);
     }
 
-    const configuredSymbols = resolveConfiguredSymbols(this.engineConfig, this.symbol);
-    const metadataRows = await this.exchange.getSymbolMetadata(configuredSymbols);
-    for (const metadata of metadataRows) {
-      this.symbolMetadata.set(metadata.symbol, metadata);
-    }
-    if (this.symbolMetadata.size === 0) {
-      throw new Error("No exchange symbol metadata available for the configured trading universe");
-    }
-
     this.leaderboard = await rankCandidateSymbols({
       userId: this.userId,
       mode: this.currentMode,
@@ -221,6 +228,10 @@ export class TradeEngine {
       openTradeSymbols: [],
       maxConcurrentSymbols: this.engineConfig.maxConcurrentSymbols,
     });
+    await this.ensureSymbolMetadata(this.trackedSymbols.length > 0 ? this.trackedSymbols : resolveConfiguredSymbols(this.engineConfig, this.symbol));
+    if (this.symbolMetadata.size === 0) {
+      throw new Error("No exchange symbol metadata available for the configured trading universe");
+    }
     this.symbol = this.leaderboard[0]?.symbol ?? this.trackedSymbols[0] ?? this.symbol;
 
     this.startMarketStream(this.symbol);
@@ -497,6 +508,7 @@ export class TradeEngine {
       openTradeSymbols,
       maxConcurrentSymbols: this.engineConfig.maxConcurrentSymbols,
     });
+    await this.ensureSymbolMetadata(this.trackedSymbols);
 
     if (this.leaderboard[0]?.symbol) {
       this.symbol = this.leaderboard[0].symbol;

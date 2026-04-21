@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
+import { resolvePreferredTradingSymbol } from "../../shared/engineConfigUtils";
 import { AgentConfigModal } from "./AgentConfigModal";
 import { Sliders } from "./icons";
 
@@ -13,7 +14,7 @@ export function AgentControlPanel() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const settings = useAppStore((s) => s.settings);
-  const symbol = settings?.engineConfig?.tradingSymbol || "BTCUSDT";
+  const symbol = resolvePreferredTradingSymbol(settings?.engineConfig);
   const autoPair = settings?.engineConfig?.autoPairSelection || false;
   const profile = settings?.engineConfig?.tradingProfile || "intraday";
   const activeSymbols = agentStatus.activeSymbols ?? [];

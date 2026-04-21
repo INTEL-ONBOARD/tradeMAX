@@ -3,6 +3,7 @@ import { Modal } from "./Modal";
 import { Loader2 } from "./icons";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
+import { resolvePreferredTradingSymbol } from "../../shared/engineConfigUtils";
 import type { BacktestRunInput } from "../../shared/types";
 
 interface BacktestProgressState {
@@ -46,7 +47,7 @@ export function BacktestRunnerModal({
   useEffect(() => {
     if (!isOpen || !settings) return;
 
-    setSymbol(settings.engineConfig?.tradingSymbol || "BTCUSDT");
+    setSymbol(resolvePreferredTradingSymbol(settings.engineConfig));
     setStartingBalance(settings.engineConfig?.paperStartingBalance || 10000);
     setWalkForwardSweep(false);
     setError(null);

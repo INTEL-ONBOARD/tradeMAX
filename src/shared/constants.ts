@@ -78,7 +78,8 @@ export const ENGINE = {
 export const ENGINE_DEFAULTS = {
   tradingSymbol: "BTCUSDT",
   autoPairSelection: true,
-  candidateSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT"] as readonly string[],
+  restrictAutoPairSelectionToShortlist: false,
+  candidateSymbols: [] as readonly string[],
   tradingProfile: "intraday" as const,
   loopIntervalSec: 8,
   candleTimeframe: "1m" as const,

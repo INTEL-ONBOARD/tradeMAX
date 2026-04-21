@@ -73,6 +73,7 @@ export interface RiskProfile {
 export interface EngineConfig {
   tradingSymbol: string;
   autoPairSelection: boolean;
+  restrictAutoPairSelectionToShortlist: boolean;
   candidateSymbols: string[];
   tradingProfile: TradingProfile;
   loopIntervalSec: number;

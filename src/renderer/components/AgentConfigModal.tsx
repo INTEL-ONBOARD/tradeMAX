@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Modal } from "./Modal";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
+import { resolvePreferredTradingSymbol } from "../../shared/engineConfigUtils";
 import { Crosshair, Minus, Plus, ChevronDown, AlertTriangle, Shield, Key } from "./icons";
 import type { UserSettings } from "../../shared/types";
 
@@ -154,7 +155,7 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
     }
     if (!settings) return;
 
-    setPair(settings.engineConfig?.tradingSymbol || "BTCUSDT");
+    setPair(resolvePreferredTradingSymbol(settings.engineConfig));
     setAutoPair(settings.engineConfig?.autoPairSelection || false);
     setRiskPct(settings.riskProfile?.maxRiskPct || 2);
     setMode(settings.tradingMode || "spot");
@@ -202,6 +203,7 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
         engineConfig: {
           tradingSymbol: pair,
           autoPairSelection: autoPair,
+          ...(autoPair ? { restrictAutoPairSelectionToShortlist: false } : {}),
           loopIntervalSec: p.loopIntervalSec,
           tradeCooldownSec: p.tradeCooldownSec,
         },
@@ -231,12 +233,12 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
 
         <div className="p-5 space-y-5 overflow-y-auto" style={{ maxHeight: "70vh" }}>
 
-          {/* ── Currency Pair ─────────────────────────── */}
+          {/* ── Market Selection ─────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-1.5">
                 <Crosshair size={12} className="text-[var(--text-tertiary)]" />
-                Currency Pair
+                Market Selection
               </label>
               {/* Auto pair toggle */}
               <button
@@ -254,7 +256,7 @@ export function AgentConfigModal({ isOpen, onClose }: Props) {
 
             {autoPair ? (
               <div className="flex items-center justify-center py-3 rounded-lg border border-dashed border-[var(--color-profit)]" style={{ background: "rgba(16,185,129,0.05)" }}>
-                <p className="text-xs text-[var(--color-profit)] font-medium">The AI will rank the configured candidate symbols and trade the best portfolio opportunities</p>
+                <p className="text-xs text-[var(--color-profit)] font-medium">The AI will scan a broader live USDT market universe and rotate into the strongest opportunities automatically</p>
               </div>
             ) : (
               <PairDropdown

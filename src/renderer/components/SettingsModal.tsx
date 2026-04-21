@@ -1219,20 +1219,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div className="space-y-4">
                   <SettingsSection
                     title="Trading Style"
-                    description="Choose the market pace and the pair the engine should focus on."
+                    description={ec.autoPairSelection
+                      ? "Choose how fast the engine trades. Pair choice is handled automatically across the broader live market."
+                      : "Choose how fast the engine trades and which pair it should focus on."}
                   >
-                    <SettingRow
-                      label={ec.autoPairSelection ? "Primary Pair" : "Trading Pair"}
-                      description={ec.autoPairSelection
-                        ? "Used as the default focus pair while the engine rotates through your shortlist."
-                        : "The single market pair the engine will trade."}
-                    >
-                      <TextInput
-                        value={ec.tradingSymbol}
-                        onChange={(v) => updateEngineConfig("tradingSymbol", v.toUpperCase())}
-                        className="w-40 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
-                      />
-                    </SettingRow>
+                    {!ec.autoPairSelection && (
+                      <SettingRow
+                        label="Trading Pair"
+                        description="The single market pair the engine will trade."
+                      >
+                        <TextInput
+                          value={ec.tradingSymbol}
+                          onChange={(v) => updateEngineConfig("tradingSymbol", v.toUpperCase())}
+                          className="w-40 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+                        />
+                      </SettingRow>
+                    )}
                     <SettingRow
                       label="Trading Tempo"
                       description="Scalp reacts fastest, intraday is balanced, swing is slower and more selective."
@@ -1258,27 +1260,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </SettingsSection>
 
                   <SettingsSection
-                    title="Pair Selection"
-                    description="Control whether the engine stays on one pair or rotates through a shortlist."
+                    title="Automatic Pair Selection"
+                    description="Automatic mode now scans a broader live USDT market universe and picks the strongest opportunities for you."
                   >
                     <SettingRow
-                      label="Auto-Rotate Pairs"
-                      description="Let the engine score your shortlist and switch to the strongest pair automatically."
+                      label="Automatic Pair Selection"
+                      description="Turn this on to let the engine discover and rotate into the strongest pairs automatically."
                     >
                       <Toggle checked={ec.autoPairSelection} onChange={(v) => updateEngineConfig("autoPairSelection", v)} />
                     </SettingRow>
                     {ec.autoPairSelection ? (
                       <>
-                        <SettingRow
-                          label="Candidate Pairs"
-                          description="Comma-separated shortlist the engine may rotate across."
-                        >
-                          <TextInput
-                            value={(ec.candidateSymbols ?? ec.watchlist ?? []).join(", ")}
-                            onChange={(v) => updateEngineConfig("candidateSymbols", v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))}
-                            className="w-[280px] px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
-                          />
-                        </SettingRow>
+                        <p className="pt-1 text-[11px] italic text-[var(--text-tertiary)]">
+                          You do not need to choose a pair manually. If you ever want to restrict the engine to a custom shortlist, that option lives under Advanced Engine Controls.
+                        </p>
                         <SettingRow
                           label="Max Active Pairs"
                           description="Maximum number of pairs the engine may keep open at the same time."
@@ -1637,6 +1632,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           title="Selection And Memory Tuning"
                           description="Fine-tune how much trade history and local memory affect symbol ranking and AI context."
                         >
+                          <SettingRow label="Restrict Auto Discovery To Shortlist" description="Only use this if you want to limit automatic discovery to a custom set of pairs.">
+                            <Toggle
+                              checked={ec.restrictAutoPairSelectionToShortlist}
+                              onChange={(v) => updateEngineConfig("restrictAutoPairSelectionToShortlist", v)}
+                            />
+                          </SettingRow>
+                          {ec.restrictAutoPairSelectionToShortlist && (
+                            <SettingRow label="Auto Discovery Shortlist" description="Comma-separated pairs the engine is allowed to discover from when shortlist restriction is enabled.">
+                              <TextInput
+                                value={(ec.candidateSymbols ?? ec.watchlist ?? []).join(", ")}
+                                onChange={(v) => updateEngineConfig("candidateSymbols", v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))}
+                                className="w-[320px] px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+                              />
+                            </SettingRow>
+                          )}
                           <SettingRow label="Memory Retrieval Count" description="Number of prior cases pulled into each AI cycle.">
                             <NumberInput value={ec.memoryRetrievalCount} min={1} max={20} step={1} onChange={(v) => updateEngineConfig("memoryRetrievalCount", Math.round(v))} />
                           </SettingRow>

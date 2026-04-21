@@ -31,6 +31,7 @@ import {
   listProfileConfigs,
   saveProfileConfig,
 } from "../services/profileConfigService.js";
+import { resolvePreferredTradingSymbol } from "../shared/engineConfigUtils.js";
 import type { BacktestRunInput } from "../shared/types.js";
 import { createWindowRuntime } from "./windowLifecycle.js";
 import { teardownMainProcessStreams } from "./runtimeTeardown.js";
@@ -538,7 +539,7 @@ export function registerIpcHandlers(): void {
     const openaiApiKey = encryptedAIKey ? decrypt(encryptedAIKey, userSalt) : undefined;
     const activeSymbol = tradeEngine.isRunning()
       ? tradeEngine.getSymbol()
-      : (user.engineConfig.tradingSymbol || "BTCUSDT");
+      : resolvePreferredTradingSymbol(user.engineConfig);
 
     const result = await runSelfReview({
       userId: currentUserId,

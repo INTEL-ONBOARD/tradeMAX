@@ -22,6 +22,7 @@ export interface IUser extends Document {
   engineConfig: {
     tradingSymbol: string;
     autoPairSelection: boolean;
+    restrictAutoPairSelectionToShortlist: boolean;
     candidateSymbols: string[];
     tradingProfile: "scalp" | "intraday" | "swing" | "custom";
     loopIntervalSec: number;
@@ -97,7 +98,8 @@ const userSchema = new Schema<IUser>(
     engineConfig: {
       tradingSymbol: { type: String, default: "BTCUSDT" },
       autoPairSelection: { type: Boolean, default: true },
-      candidateSymbols: { type: [String], default: ["BTCUSDT", "ETHUSDT", "SOLUSDT"] },
+      restrictAutoPairSelectionToShortlist: { type: Boolean, default: false },
+      candidateSymbols: { type: [String], default: [] },
       tradingProfile: { type: String, enum: ["scalp", "intraday", "swing", "custom"], default: "intraday" },
       loopIntervalSec: { type: Number, default: 8 },
       candleTimeframe: { type: String, enum: ["1m", "5m", "15m"], default: "1m" },

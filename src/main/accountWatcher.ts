@@ -4,6 +4,7 @@ import type { PaperExchangeService } from "../services/paperExchangeService.js";
 import { decrypt } from "../services/encryptionService.js";
 import { getUserDoc } from "../services/authService.js";
 import { logger } from "../services/loggerService.js";
+import { resolvePreferredTradingSymbol } from "../shared/engineConfigUtils.js";
 import type { PortfolioSnapshot, Position, MarketTick } from "../shared/types.js";
 
 type AccountCallbacks = {
@@ -82,7 +83,7 @@ class AccountWatcher {
       }
 
       // Start market ticker stream for live price data
-      const symbol = user.engineConfig.tradingSymbol || "BTCUSDT";
+      const symbol = resolvePreferredTradingSymbol(user.engineConfig);
       this.exchange.startTickerStream(symbol, (tick) => {
         this.callbacks?.onMarketTick(tick);
       });
