@@ -121,7 +121,7 @@ export function DashboardPage() {
                 <h2 className="text-sm font-bold text-[var(--color-loss)] mb-3 pl-1 border-l-2 border-[var(--color-loss)] uppercase tracking-wider">
                   Analytics & Intelligence
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <ToolCard title="Portfolio Metrics" icon={Wallet} onClick={() => setOpenPanel("portfolio")} />
                   <ToolCard title="AI Signal Engine" icon={Activity} onClick={() => setOpenPanel("ai-signal")} />
                   <ToolCard title="Deep Market Scan" icon={LayoutGrid} onClick={() => setOpenPanel("market-scan")} />

@@ -7,6 +7,7 @@ export const IPC = {
 
   SETTINGS_SAVE_API_KEYS: "settings:save-api-keys",
   SETTINGS_SAVE_OPENAI_KEY: "settings:save-openai-key",
+  SETTINGS_REVEAL_KEYS: "settings:reveal-keys",
   SETTINGS_GET: "settings:get",
   SETTINGS_UPDATE: "settings:update",
 

@@ -152,12 +152,15 @@ export function registerIpcHandlers(): void {
       );
       const portfolio = await exchange.getBalance();
 
-      const settings = await auth.saveApiKeys(
+      await auth.saveApiKeys(
         currentUserId,
         parsed.exchange,
         parsed.apiKey,
         parsed.apiSecret,
       );
+      const settings = user.selectedExchange === parsed.exchange
+        ? await auth.getSettings(currentUserId)
+        : await auth.updateSettings(currentUserId, { selectedExchange: parsed.exchange });
       await logger.info("SYSTEM", `API keys validated and saved for ${parsed.exchange}`);
 
       // Start real-time account streaming if agent isn't running
@@ -213,6 +216,20 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.SETTINGS_GET, async () => {
     if (!currentUserId) throw new Error("Not authenticated");
     return auth.getSettings(currentUserId);
+  });
+
+  ipcMain.handle(IPC.SETTINGS_REVEAL_KEYS, async () => {
+    if (!currentUserId) throw new Error("Not authenticated");
+    const user = await auth.getUserDoc(currentUserId);
+    const userSalt = user.encryptionSalt || undefined;
+    const encryptedOpenAI = user.openaiApiKey || user.claudeApiKey;
+    const bybitKeys = user.exchangeKeys.bybit;
+
+    return {
+      openaiApiKey: encryptedOpenAI ? decrypt(encryptedOpenAI, userSalt) : "",
+      bybitApiKey: bybitKeys.apiKey ? decrypt(bybitKeys.apiKey, userSalt) : "",
+      bybitApiSecret: bybitKeys.apiSecret ? decrypt(bybitKeys.apiSecret, userSalt) : "",
+    };
   });
 
   ipcMain.handle(IPC.SETTINGS_UPDATE, async (_e, data) => {

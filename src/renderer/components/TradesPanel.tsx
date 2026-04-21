@@ -183,7 +183,7 @@ export function TradesPanel() {
                     initial={{ opacity: 0, x: -6 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: Math.min(i * 0.04, 0.3) }}
-                    className="border-b border-[var(--border)]/40 hover:bg-[var(--bg-overlay)] transition-colors"
+                    className="border-b border-[var(--border)] hover:bg-[var(--bg-overlay)] transition-colors"
                   >
                     <td className="py-2.5 font-mono font-medium text-[var(--text-primary)]">{t.symbol}</td>
                     <td className="py-2.5">

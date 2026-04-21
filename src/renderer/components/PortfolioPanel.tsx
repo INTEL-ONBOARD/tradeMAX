@@ -24,27 +24,12 @@ function catmullRomPath(points: { x: number; y: number }[]): string {
 export function PortfolioPanel() {
   const portfolio = useAppStore((s) => s.portfolio);
   const exchangeHistory = useAppStore((s) => s.exchangeHistory);
-
-  // Loading state — portfolio not yet fetched
-  if (!portfolio) {
-    return (
-      <div className="relative overflow-hidden flex flex-col h-full animate-pulse">
-        <div className="flex items-center gap-2.5 mb-3 px-1">
-          <div className="w-7 h-7 rounded-lg bg-[var(--bg-overlay)]" />
-          <div className="h-3 w-16 rounded bg-[var(--bg-overlay)]" />
-        </div>
-        <div className="px-1 mb-1">
-          <div className="h-2 w-20 rounded bg-[var(--bg-overlay)] mb-2" />
-          <div className="h-7 w-32 rounded bg-[var(--bg-overlay)]" />
-        </div>
-        <div className="flex-1 mt-4 rounded bg-[var(--bg-overlay)]" />
-      </div>
-    );
-  }
-
-  const totalBalance = portfolio.totalBalance;
-  const dailyPnl = portfolio.dailyPnl;
+  const selectedExchange = useAppStore((s) => s.settings?.selectedExchange ?? "paper");
+  const isLoading = !portfolio;
+  const totalBalance = portfolio?.totalBalance ?? 0;
+  const dailyPnl = portfolio?.dailyPnl ?? 0;
   const isProfitable = dailyPnl >= 0;
+  const isPaperMode = selectedExchange === "paper";
 
   // Build equity curve from exchange history + live balance
   const historicalCurve = useMemo(() => {
@@ -68,11 +53,12 @@ export function PortfolioPanel() {
   const prevBalance = useRef(totalBalance);
 
   useEffect(() => {
+    if (!portfolio) return;
     if (Math.abs(prevBalance.current - totalBalance) > 0.01) {
       setLiveTail((prev) => [...prev.slice(-20), totalBalance]);
       prevBalance.current = totalBalance;
     }
-  }, [totalBalance]);
+  }, [portfolio, totalBalance]);
 
   // Combine: historical curve + live tail, capped at 40 points
   const chartData = useMemo(() => {
@@ -104,6 +90,8 @@ export function PortfolioPanel() {
   const areaPath = `${linePath} L ${W} ${H} L 0 ${H} Z`;
 
   const chartColor = isProfitable ? "var(--color-profit)" : "var(--color-loss)";
+  const statusColor = isPaperMode ? "var(--text-tertiary)" : chartColor;
+  const statusLabel = isPaperMode ? "PAPER" : "LIVE";
   const gradientId = isProfitable ? "areaGradProfit" : "areaGradLoss";
   const glowId = isProfitable ? "glowProfit" : "glowLoss";
 
@@ -119,6 +107,22 @@ export function PortfolioPanel() {
   const hoveredPt = hoveredIdx !== null ? points[hoveredIdx] : null;
   const hoveredVal = hoveredIdx !== null ? chartData[hoveredIdx] : null;
 
+  if (isLoading) {
+    return (
+      <div className="relative overflow-hidden flex flex-col h-full animate-pulse">
+        <div className="flex items-center gap-2.5 mb-3 px-1">
+          <div className="w-7 h-7 rounded-lg bg-[var(--bg-overlay)]" />
+          <div className="h-3 w-16 rounded bg-[var(--bg-overlay)]" />
+        </div>
+        <div className="px-1 mb-1">
+          <div className="h-2 w-20 rounded bg-[var(--bg-overlay)] mb-2" />
+          <div className="h-7 w-32 rounded bg-[var(--bg-overlay)]" />
+        </div>
+        <div className="flex-1 mt-4 rounded bg-[var(--bg-overlay)]" />
+      </div>
+    );
+  }
+
   return (
     <div className="relative overflow-hidden flex flex-col h-full">
       {/* Header */}
@@ -133,12 +137,12 @@ export function PortfolioPanel() {
           <span className="relative flex h-1.5 w-1.5">
             <span
               className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-              style={{ background: chartColor }}
+              style={{ background: statusColor }}
             />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{ background: chartColor }} />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{ background: statusColor }} />
           </span>
           <span className="text-[9px] font-mono font-bold text-[var(--text-secondary)] tracking-wider">
-            LIVE
+            {statusLabel}
           </span>
         </div>
       </div>

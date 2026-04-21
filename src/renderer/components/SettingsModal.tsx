@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Modal } from "./Modal";
 import { useAppStore } from "../store/appStore";
 import { IPC } from "../../shared/constants";
-import { Settings, Shield, Edit3, Monitor, CheckCircle, Loader2 } from "./icons";
+import { Settings, Shield, Edit3, Monitor, CheckCircle, Loader2, Eye, EyeOff } from "./icons";
 import type { ClosedPnlRecord, PortfolioSnapshot, Position, ProfileConfigRecord, UserSettings } from "../../shared/types";
 
 function useDebouncedCallback<T extends (...args: any[]) => any>(fn: T, delay: number): T {
@@ -17,6 +17,12 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+type RevealedKeysPayload = {
+  openaiApiKey: string;
+  bybitApiKey: string;
+  bybitApiSecret: string;
+};
 
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
@@ -121,50 +127,154 @@ function SelectInput({ value, options, onChange }: { value: string; options: str
   );
 }
 
-function PasswordInput({ value, placeholder, onChange }: { value: string; placeholder: string; onChange: (v: string) => void }) {
+function PasswordInput({
+  value,
+  placeholder,
+  onChange,
+  onFocus,
+  className,
+  type = "password",
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (v: string) => void;
+  onFocus?: () => void;
+  className?: string;
+  type?: "password" | "text";
+}) {
   return (
     <input
-      type="password"
+      type={type}
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
-      className="w-48 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+      onFocus={onFocus}
+      className={className ?? "w-48 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"}
     />
   );
 }
 
-function SaveButton({ onClick, disabled, saved, label }: { onClick: () => void; disabled: boolean; saved: boolean; label: string }) {
+function SaveButton({
+  onClick,
+  disabled,
+  saved,
+  saving,
+  label,
+  savingLabel = "Saving...",
+  savedLabel = "Saved",
+  iconOnly = false,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  saved: boolean;
+  saving?: boolean;
+  label: string;
+  savingLabel?: string;
+  savedLabel?: string;
+  iconOnly?: boolean;
+}) {
+  const title = saving ? savingLabel : saved ? savedLabel : label;
+
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
-      className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      title={title}
+      aria-label={title}
+      className={`${iconOnly ? "w-8 h-8 p-0 inline-flex items-center justify-center" : "px-3 py-1.5 text-[11px]"} font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed`}
       style={{
         background: saved ? "var(--color-profit-bg)" : "var(--color-info-bg)",
         color: saved ? "var(--color-profit)" : "var(--color-info)",
         border: `1px solid ${saved ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
       }}
     >
-      {saved ? (
-        <span className="flex items-center gap-1"><CheckCircle size={11} /> Saved</span>
+      {saving ? (
+        iconOnly ? (
+          <Loader2 size={13} className="animate-spin" />
+        ) : (
+          <span className="flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> {savingLabel}</span>
+        )
+      ) : saved ? (
+        iconOnly ? (
+          <CheckCircle size={13} />
+        ) : (
+          <span className="flex items-center gap-1"><CheckCircle size={11} /> {savedLabel}</span>
+        )
       ) : (
-        label
+        iconOnly ? <CheckCircle size={13} /> : label
       )}
     </button>
   );
 }
 
-function ExchangeKeyRow({ exchange }: { exchange: "bybit" }) {
+function StatusBadge({
+  active,
+  activeLabel = "Active",
+  inactiveLabel = "Not configured",
+}: {
+  active: boolean;
+  activeLabel?: string;
+  inactiveLabel?: string;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+      style={{
+        color: active ? "var(--color-profit)" : "var(--text-secondary)",
+        borderColor: active ? "var(--color-profit-border)" : "var(--border)",
+        background: active ? "var(--color-profit-bg)" : "var(--bg-inset)",
+      }}
+    >
+      {active && <CheckCircle size={10} />}
+      {active ? activeLabel : inactiveLabel}
+    </span>
+  );
+}
+
+function SettingsTabLoadingOverlay({ label }: { label: string }) {
+  return (
+    <div className="absolute -inset-px z-50 overflow-hidden pointer-events-auto">
+      <div className="absolute inset-0 bg-[var(--bg-surface)]/96 backdrop-blur-[20px]" />
+      <div className="absolute inset-0 bg-[var(--bg-surface)]/72" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] text-[12px] text-[var(--text-secondary)] shadow-lg text-center">
+          <Loader2 size={13} className="animate-spin" />
+          {label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExchangeKeyRow({
+  exchange,
+  onRevealStateChange,
+}: {
+  exchange: "bybit";
+  onRevealStateChange?: (busy: boolean) => void;
+}) {
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
   const setPortfolio = useAppStore((s) => s.setPortfolio);
+  const setPositions = useAppStore((s) => s.setPositions);
+  const setExchangeHistory = useAppStore((s) => s.setExchangeHistory);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showApiSecret, setShowApiSecret] = useState(false);
+  const [revealing, setRevealing] = useState(false);
+  const bybitPrefetchedRef = useRef(false);
 
   const hasKeys = settings?.hasBybitKeys;
+
+  useEffect(() => {
+    onRevealStateChange?.(revealing);
+    return () => onRevealStateChange?.(false);
+  }, [revealing, onRevealStateChange]);
 
   const handleSave = async () => {
     if (!apiKey || !apiSecret) return;
@@ -176,7 +286,16 @@ function ExchangeKeyRow({ exchange }: { exchange: "bybit" }) {
       }) as { settings: any; portfolio: any };
       setSettings(result.settings);
       setPortfolio(result.portfolio);
-      setApiKey(""); setApiSecret("");
+      if (result.settings?.selectedExchange === exchange) {
+        const [positions, closedPnl] = await Promise.all([
+          window.api.invoke(IPC.POSITIONS_GET).catch(() => []),
+          window.api.invoke(IPC.EXCHANGE_CLOSED_PNL).catch(() => []),
+        ]);
+        setPositions((positions as Position[]) ?? []);
+        setExchangeHistory((closedPnl as ClosedPnlRecord[]) ?? []);
+      }
+      setShowApiKey(false);
+      setShowApiSecret(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err: any) {
@@ -186,51 +305,131 @@ function ExchangeKeyRow({ exchange }: { exchange: "bybit" }) {
     }
   };
 
+  const ensureStoredBybitKeys = useCallback(async (): Promise<boolean> => {
+    if (hasKeys && !apiKey && !apiSecret) {
+      setRevealing(true);
+      setError(null);
+      try {
+        const revealed = await window.api.invoke(IPC.SETTINGS_REVEAL_KEYS) as RevealedKeysPayload;
+        setApiKey(revealed.bybitApiKey ?? "");
+        setApiSecret(revealed.bybitApiSecret ?? "");
+      } catch (err: any) {
+        setError(err?.message ?? "Failed to reveal saved keys");
+        return false;
+      } finally {
+        setRevealing(false);
+      }
+    }
+    return true;
+  }, [hasKeys, apiKey, apiSecret]);
+
+  useEffect(() => {
+    if (!hasKeys || bybitPrefetchedRef.current) return;
+    bybitPrefetchedRef.current = true;
+    void ensureStoredBybitKeys();
+  }, [hasKeys, ensureStoredBybitKeys]);
+
+  const toggleApiKeyVisibility = async () => {
+    if (!showApiKey) {
+      const ok = await ensureStoredBybitKeys();
+      if (!ok) return;
+    }
+    setShowApiKey((prev) => !prev);
+  };
+
+  const toggleApiSecretVisibility = async () => {
+    if (!showApiSecret) {
+      const ok = await ensureStoredBybitKeys();
+      if (!ok) return;
+    }
+    setShowApiSecret((prev) => !prev);
+  };
+
   return (
-    <>
-      <SettingRow label="API Key" description={`Your ${exchange} API key`}>
-        <div className="flex items-center gap-2">
-          {hasKeys && !apiKey && (
-            <span className="flex items-center gap-1 text-[10px] text-[var(--color-profit)] font-medium">
-              <CheckCircle size={10} /> Active
-            </span>
-          )}
-          <PasswordInput value={apiKey} placeholder={hasKeys ? "••••••••••••" : "Enter API key"} onChange={(v) => { setApiKey(v); setError(null); }} />
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[13px] font-medium text-[var(--text-primary)]">Bybit Credentials</p>
+          <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
+            Required only when Bybit is selected as the active execution venue.
+          </p>
         </div>
-      </SettingRow>
-      <SettingRow label="API Secret" description={`Your ${exchange} API secret`}>
-        <div className="flex items-center gap-2">
-          <PasswordInput value={apiSecret} placeholder={hasKeys ? "••••••••••••" : "Enter API secret"} onChange={(v) => { setApiSecret(v); setError(null); }} />
-          <button
-            onClick={handleSave}
-            disabled={!apiKey || !apiSecret || saving}
-            className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              background: saved ? "var(--color-profit-bg)" : "var(--color-info-bg)",
-              color: saved ? "var(--color-profit)" : "var(--color-info)",
-              border: `1px solid ${saved ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
-            }}
-          >
-            {saving ? (
-              <span className="flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Validating...</span>
-            ) : saved ? (
-              <span className="flex items-center gap-1"><CheckCircle size={11} /> Validated</span>
-            ) : (
-              "Save"
-            )}
-          </button>
+        <div className="shrink-0 flex flex-col items-end gap-2">
+          <StatusBadge active={Boolean(hasKeys)} />
         </div>
-      </SettingRow>
+      </div>
+      <div className="mt-2">
+        <SettingRow label="API Key" description={`Your ${exchange} API key`}>
+          <div className="relative w-64">
+            <PasswordInput
+              value={apiKey}
+              placeholder={hasKeys ? "••••••••••••" : "Enter API key"}
+              type={showApiKey ? "text" : "password"}
+              onFocus={() => { void ensureStoredBybitKeys(); }}
+              className="w-full pr-9 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+              onChange={(v) => { setApiKey(v); setError(null); }}
+            />
+            <button
+              type="button"
+              onClick={() => void toggleApiKeyVisibility()}
+              disabled={revealing || (!hasKeys && !apiKey)}
+              title={showApiKey ? "Hide API key" : "Show API key"}
+              aria-label={showApiKey ? "Hide API key" : "Show API key"}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {revealing ? <Loader2 size={13} className="animate-spin" /> : showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </SettingRow>
+        <SettingRow label="API Secret" description={`Your ${exchange} API secret`}>
+          <div className="flex items-center gap-2">
+            <div className="relative w-64">
+              <PasswordInput
+                value={apiSecret}
+                placeholder={hasKeys ? "••••••••••••" : "Enter API secret"}
+                type={showApiSecret ? "text" : "password"}
+                onFocus={() => { void ensureStoredBybitKeys(); }}
+                className="w-full pr-9 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+                onChange={(v) => { setApiSecret(v); setError(null); }}
+              />
+              <button
+                type="button"
+                onClick={() => void toggleApiSecretVisibility()}
+                disabled={revealing || (!hasKeys && !apiSecret)}
+                title={showApiSecret ? "Hide API secret" : "Show API secret"}
+                aria-label={showApiSecret ? "Hide API secret" : "Show API secret"}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {revealing ? <Loader2 size={13} className="animate-spin" /> : showApiSecret ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+            <SaveButton
+              onClick={handleSave}
+              disabled={!apiKey || !apiSecret || saving}
+              saving={saving}
+              saved={saved}
+              label="Validate & Save"
+              savingLabel="Validating..."
+              savedLabel="Validated"
+              iconOnly
+            />
+          </div>
+        </SettingRow>
+      </div>
       {error && (
-        <div className="px-1 py-2">
+        <div className="pt-2">
           <p className="text-[11px] text-[var(--color-loss)] font-medium">{error}</p>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
-function APIKeysTab() {
+function APIKeysTab({
+  onLoadingStateChange,
+}: {
+  onLoadingStateChange?: (busy: boolean, label?: string) => void;
+}) {
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
   const setPortfolio = useAppStore((s) => s.setPortfolio);
@@ -242,6 +441,10 @@ function APIKeysTab() {
   const [savedOpenAI, setSavedOpenAI] = useState(false);
   const [savingOpenAI, setSavingOpenAI] = useState(false);
   const [openaiError, setOpenaiError] = useState<string | null>(null);
+  const [showOpenAIKey, setShowOpenAIKey] = useState(false);
+  const [revealingOpenAIKey, setRevealingOpenAIKey] = useState(false);
+  const openAIPrefetchedRef = useRef(false);
+  const [revealingBybitKeys, setRevealingBybitKeys] = useState(false);
   const [switchingExchange, setSwitchingExchange] = useState(false);
 
   const refreshRuntimeState = async () => {
@@ -263,7 +466,7 @@ function APIKeysTab() {
     try {
       const updated = await window.api.invoke(IPC.SETTINGS_SAVE_OPENAI_KEY, { openaiApiKey: openaiKey });
       setSettings(updated as UserSettings);
-      setOpenaiKey("");
+      setShowOpenAIKey(false);
       setSavedOpenAI(true);
       setTimeout(() => setSavedOpenAI(false), 2500);
     } catch (err: any) {
@@ -271,6 +474,40 @@ function APIKeysTab() {
     } finally {
       setSavingOpenAI(false);
     }
+  };
+
+  const ensureStoredOpenAIKey = useCallback(async (): Promise<boolean> => {
+    if (settings?.hasOpenAIKey && !openaiKey) {
+      setRevealingOpenAIKey(true);
+      setOpenaiError(null);
+      try {
+        const revealed = await window.api.invoke(IPC.SETTINGS_REVEAL_KEYS) as RevealedKeysPayload;
+        setOpenaiKey(revealed.openaiApiKey ?? "");
+      } catch (err: any) {
+        setOpenaiError(err?.message ?? "Failed to reveal saved OpenAI key");
+        return false;
+      } finally {
+        setRevealingOpenAIKey(false);
+      }
+    }
+    return true;
+  }, [settings?.hasOpenAIKey, openaiKey]);
+
+  useEffect(() => {
+    if (!settings?.hasOpenAIKey || openAIPrefetchedRef.current) return;
+    openAIPrefetchedRef.current = true;
+    void ensureStoredOpenAIKey();
+  }, [settings?.hasOpenAIKey, ensureStoredOpenAIKey]);
+
+  const handleToggleOpenAIVisibility = async () => {
+    if (showOpenAIKey) {
+      setShowOpenAIKey(false);
+      return;
+    }
+
+    const ok = await ensureStoredOpenAIKey();
+    if (!ok) return;
+    setShowOpenAIKey(true);
   };
 
   const handleExchangeChange = async (exchange: "bybit" | "paper") => {
@@ -296,9 +533,15 @@ function APIKeysTab() {
     }
   };
 
+  useEffect(() => {
+    const isBusy = revealingOpenAIKey || revealingBybitKeys;
+    onLoadingStateChange?.(isBusy, "Loading saved keys...");
+    return () => onLoadingStateChange?.(false);
+  }, [revealingOpenAIKey, revealingBybitKeys, onLoadingStateChange]);
+
   return (
     <div className="space-y-6">
-      <div>
+        <div>
         <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
           <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
             Execution Venue
@@ -345,58 +588,81 @@ function APIKeysTab() {
           <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
             OpenAI API Key
           </h3>
-          <button
-            onClick={handleSaveOpenAI}
-            disabled={!openaiKey || savingOpenAI}
-            className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              background: savedOpenAI ? "var(--color-profit-bg)" : "var(--color-info-bg)",
-              color: savedOpenAI ? "var(--color-profit)" : "var(--color-info)",
-              border: `1px solid ${savedOpenAI ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
-            }}
-          >
-            {savingOpenAI ? (
-              <><Loader2 size={11} className="animate-spin" /> Validating...</>
-            ) : savedOpenAI ? (
-              <><CheckCircle size={11} /> Validated</>
-            ) : (
-              "Save"
-            )}
-          </button>
         </div>
-        <SettingRow
-          label="OpenAI API Key"
-          description={settings?.hasOpenAIKey ? "Key is active and encrypted locally" : "Required for GPT-powered trade analysis"}
-        >
-          <div className="flex items-center gap-2">
-            {settings?.hasOpenAIKey && (
-              <span className="flex items-center gap-1 text-[10px] text-[var(--color-profit)] font-medium">
-                <CheckCircle size={10} /> Active
-              </span>
-            )}
-            <PasswordInput
-              value={openaiKey}
-              placeholder={settings?.hasOpenAIKey ? "••••••••••••" : "sk-proj-..."}
-              onChange={(v) => { setOpenaiKey(v); setOpenaiError(null); }}
-            />
+        <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[13px] font-medium text-[var(--text-primary)]">OpenAI Credentials</p>
+              <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
+                {settings?.hasOpenAIKey
+                  ? "Key is active and encrypted locally."
+                  : "Required for GPT-powered trade analysis."}
+              </p>
+            </div>
+            <div className="shrink-0 flex flex-col items-end gap-2">
+              <StatusBadge active={Boolean(settings?.hasOpenAIKey)} />
+            </div>
           </div>
-        </SettingRow>
-        {openaiError && (
-          <div className="px-1 py-2">
-            <p className="text-[11px] text-[var(--color-loss)] font-medium">{openaiError}</p>
+          <div className="mt-2">
+            <SettingRow
+              label="API Key"
+              description="Project key used by analysis, review, and memory workflows"
+            >
+              <div className="flex items-center gap-2">
+                <div className="relative w-64">
+                  <PasswordInput
+                    value={openaiKey}
+                    placeholder={settings?.hasOpenAIKey ? "••••••••••••" : "sk-proj-..."}
+                    type={showOpenAIKey ? "text" : "password"}
+                    onFocus={() => { void ensureStoredOpenAIKey(); }}
+                    className="w-full pr-9 px-2 py-1.5 text-[12px] rounded-md border border-[var(--border)] bg-[var(--bg-inset)] text-[var(--text-primary)] outline-none focus:border-[var(--primary-500)] transition-colors"
+                    onChange={(v) => { setOpenaiKey(v); setOpenaiError(null); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleOpenAIVisibility()}
+                    disabled={revealingOpenAIKey || (!settings?.hasOpenAIKey && !openaiKey)}
+                    title={showOpenAIKey ? "Hide OpenAI key" : "Show OpenAI key"}
+                    aria-label={showOpenAIKey ? "Hide OpenAI key" : "Show OpenAI key"}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {revealingOpenAIKey ? <Loader2 size={13} className="animate-spin" /> : showOpenAIKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+                <SaveButton
+                  onClick={handleSaveOpenAI}
+                  disabled={!openaiKey || savingOpenAI}
+                  saving={savingOpenAI}
+                  saved={savedOpenAI}
+                  label="Validate & Save"
+                  savingLabel="Validating..."
+                  savedLabel="Validated"
+                  iconOnly
+                />
+              </div>
+            </SettingRow>
           </div>
-        )}
+          {openaiError && (
+            <div className="pt-2">
+              <p className="text-[11px] text-[var(--color-loss)] font-medium">{openaiError}</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Bybit */}
       <div>
-        <h3 className="text-[14px] font-semibold text-[var(--text-primary)] border-b border-[var(--border)] pb-2">
-          Bybit API Keys
-        </h3>
-        <p className="text-[11px] text-[var(--text-tertiary)] mt-2">
-          Required only when Bybit is selected as the active execution venue.
-        </p>
-        <ExchangeKeyRow exchange="bybit" />
+        <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+          <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
+            Bybit API Keys
+          </h3>
+        </div>
+        <div className="mt-3">
+          <ExchangeKeyRow
+            exchange="bybit"
+            onRevealStateChange={setRevealingBybitKeys}
+          />
+        </div>
       </div>
     </div>
   );
@@ -422,6 +688,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [profilePresetName, setProfilePresetName] = useState("");
   const [profileActionState, setProfileActionState] = useState<"idle" | "loading" | "saving" | "applying" | "deleting">("idle");
   const [profileActionError, setProfileActionError] = useState<string | null>(null);
+  const [apiTabLoading, setApiTabLoading] = useState(false);
+  const [apiTabLoadingLabel, setApiTabLoadingLabel] = useState("Loading saved keys...");
 
   const showSaved = () => {
     setSaveStatus("saved");
@@ -465,6 +733,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const [aiModels, setAiModels] = useState<{ id: string; name: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const riskTabLoading = activeTab === "risk" && !rp;
+  const engineTabLoading = activeTab === "engine" && (!ec || modelsLoading || profileActionState === "loading");
+  const engineTabLoadingLabel = !ec
+    ? "Loading engine configuration..."
+    : profileActionState === "loading"
+      ? "Loading saved presets..."
+      : "Loading AI models...";
+  const riskTabLoadingLabel = "Loading risk profile...";
+  const activeOverlayLabel = activeTab === "api"
+    ? (apiTabLoading ? apiTabLoadingLabel : null)
+    : activeTab === "risk"
+      ? (riskTabLoading ? riskTabLoadingLabel : null)
+      : activeTab === "engine"
+        ? (engineTabLoading ? engineTabLoadingLabel : null)
+        : null;
+  const contentLoading = Boolean(activeOverlayLabel);
+
+  const handleApiTabLoadingStateChange = useCallback((busy: boolean, label?: string) => {
+    setApiTabLoading(busy);
+    if (label) {
+      setApiTabLoadingLabel(label);
+    }
+  }, []);
 
   useEffect(() => {
     if (activeTab !== "engine" || aiModels.length > 0) return;
@@ -588,7 +879,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
 
         {/* Right Content */}
-        <div className="flex-1 overflow-y-auto p-6 bg-transparent">
+        <div className={`relative flex-1 p-6 bg-transparent ${contentLoading ? "overflow-hidden" : "overflow-y-auto"}`}>
           {activeTab === "general" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
@@ -657,59 +948,61 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </div>
           )}
 
-          {activeTab === "api" && <APIKeysTab />}
+          {activeTab === "api" && (
+            <APIKeysTab onLoadingStateChange={handleApiTabLoadingStateChange} />
+          )}
 
           {activeTab === "risk" && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
-                <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
-                  Risk Engine Parameters
-                </h3>
-                <button
-                  disabled
-                  className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{
-                    background: saveStatus === "saved" ? "var(--color-profit-bg)" : "var(--color-info-bg)",
-                    color: saveStatus === "saved" ? "var(--color-profit)" : "var(--color-info)",
-                    border: `1px solid ${saveStatus === "saved" ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
-                  }}
-                >
-                  {saveStatus === "saving" ? (
-                    <><Loader2 size={11} className="animate-spin" /> Saving...</>
-                  ) : saveStatus === "saved" ? (
-                    <><CheckCircle size={11} /> Saved</>
-                  ) : (
-                    "Save"
-                  )}
-                </button>
-              </div>
-              {rp ? (
-                <div>
-                  <SettingRow label="Max Risk Per Trade %" description="Maximum percentage of balance risked per trade (0.1 - 10)">
-                    <NumberInput value={rp.maxRiskPct} min={0.1} max={10} step={0.1} onChange={(v) => updateRiskProfile("maxRiskPct", v)} />
-                  </SettingRow>
-                  <SettingRow label="Max Daily Loss %" description="Stop trading after this daily loss threshold (1 - 20)">
-                    <NumberInput value={rp.maxDailyLossPct} min={1} max={20} step={0.5} onChange={(v) => updateRiskProfile("maxDailyLossPct", v)} />
-                  </SettingRow>
-                  <SettingRow label="Max Open Positions" description="Maximum concurrent open positions (1 - 20)">
-                    <NumberInput value={rp.maxOpenPositions} min={1} max={20} step={1} onChange={(v) => updateRiskProfile("maxOpenPositions", Math.round(v))} />
-                  </SettingRow>
-                  <SettingRow label="Min AI Confidence" description="Minimum AI confidence score to execute (0 - 1)">
-                    <NumberInput value={rp.minConfidence} min={0} max={1} step={0.05} onChange={(v) => updateRiskProfile("minConfidence", v)} />
-                  </SettingRow>
-                  <SettingRow label="Max Leverage" description="Maximum leverage multiplier (1 - 20)">
-                    <NumberInput value={rp.maxLeverage} min={1} max={20} step={1} onChange={(v) => updateRiskProfile("maxLeverage", Math.round(v))} />
-                  </SettingRow>
+                <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+                  <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
+                    Risk Engine Parameters
+                  </h3>
+                  <button
+                    disabled
+                    className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                      background: saveStatus === "saved" ? "var(--color-profit-bg)" : "var(--color-info-bg)",
+                      color: saveStatus === "saved" ? "var(--color-profit)" : "var(--color-info)",
+                      border: `1px solid ${saveStatus === "saved" ? "var(--color-profit-border)" : "var(--color-info-border)"}`,
+                    }}
+                  >
+                    {saveStatus === "saving" ? (
+                      <><Loader2 size={11} className="animate-spin" /> Saving...</>
+                    ) : saveStatus === "saved" ? (
+                      <><CheckCircle size={11} /> Saved</>
+                    ) : (
+                      "Save"
+                    )}
+                  </button>
                 </div>
-              ) : (
-                <p className="text-[12px] text-[var(--text-tertiary)] italic">Loading risk profile...</p>
-              )}
+                {rp ? (
+                  <div>
+                    <SettingRow label="Max Risk Per Trade %" description="Maximum percentage of balance risked per trade (0.1 - 10)">
+                      <NumberInput value={rp.maxRiskPct} min={0.1} max={10} step={0.1} onChange={(v) => updateRiskProfile("maxRiskPct", v)} />
+                    </SettingRow>
+                    <SettingRow label="Max Daily Loss %" description="Stop trading after this daily loss threshold (1 - 20)">
+                      <NumberInput value={rp.maxDailyLossPct} min={1} max={20} step={0.5} onChange={(v) => updateRiskProfile("maxDailyLossPct", v)} />
+                    </SettingRow>
+                    <SettingRow label="Max Open Positions" description="Maximum concurrent open positions (1 - 20)">
+                      <NumberInput value={rp.maxOpenPositions} min={1} max={20} step={1} onChange={(v) => updateRiskProfile("maxOpenPositions", Math.round(v))} />
+                    </SettingRow>
+                    <SettingRow label="Min AI Confidence" description="Minimum AI confidence score to execute (0 - 1)">
+                      <NumberInput value={rp.minConfidence} min={0} max={1} step={0.05} onChange={(v) => updateRiskProfile("minConfidence", v)} />
+                    </SettingRow>
+                    <SettingRow label="Max Leverage" description="Maximum leverage multiplier (1 - 20)">
+                      <NumberInput value={rp.maxLeverage} min={1} max={20} step={1} onChange={(v) => updateRiskProfile("maxLeverage", Math.round(v))} />
+                    </SettingRow>
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-[var(--text-tertiary)] italic">Loading risk profile...</p>
+                )}
             </div>
           )}
 
           {activeTab === "engine" && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+                <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
                 <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
                   Engine Configuration
                 </h3>
@@ -731,8 +1024,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   )}
                 </button>
               </div>
-              {ec ? (
-                <div>
+                {ec ? (
+                  <div>
                   <SettingRow label="Trading Symbol" description="The trading pair symbol (e.g. BTCUSDT)">
                     <TextInput value={ec.tradingSymbol} onChange={(v) => updateEngineConfig("tradingSymbol", v)} />
                   </SettingRow>
@@ -965,12 +1258,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <SettingRow label="Paper Starting Balance" description="Starting account balance for local paper trading (100 - 1,000,000)">
                     <NumberInput value={ec.paperStartingBalance} min={100} max={1000000} step={100} onChange={(v) => updateEngineConfig("paperStartingBalance", Math.round(v))} />
                   </SettingRow>
-                </div>
-              ) : (
-                <p className="text-[12px] text-[var(--text-tertiary)] italic">Loading engine config...</p>
-              )}
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-[var(--text-tertiary)] italic">Loading engine config...</p>
+                )}
             </div>
           )}
+
+          {activeOverlayLabel && <SettingsTabLoadingOverlay label={activeOverlayLabel} />}
         </div>
       </div>
 
