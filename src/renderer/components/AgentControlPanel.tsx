@@ -73,10 +73,10 @@ export function AgentControlPanel() {
         </span>
       </div>
 
-      <h2 className="text-xl font-medium text-[var(--text-primary)] mb-1">TradeMAX Agent</h2>
+      <h2 className="text-xl font-medium text-[var(--text-primary)] mb-3">TradeMAX Agent</h2>
 
       {/* Pair badges */}
-      <div className="flex items-center gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-4">
         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[var(--bg-inset)] text-[var(--text-secondary)] border border-[var(--border)]">
           {autoPair ? `AUTO ${activeSymbol}` : activeSymbol}
         </span>
@@ -94,7 +94,7 @@ export function AgentControlPanel() {
       <button
         onClick={handleToggleAgent}
         disabled={agentStatus.frozen && !agentStatus.running}
-        className={`w-64 py-4 rounded-full text-lg font-bold transition-all shadow-lg ${
+        className={`w-64 py-4 mt-1 rounded-full text-lg font-bold transition-all shadow-lg ${
           isRunning 
             ? "bg-transparent border-2 border-[var(--color-loss)] text-[var(--color-loss)] hover:bg-[var(--color-loss-bg)]"
             : "bg-[var(--color-loss)] text-white hover:brightness-110 hover:shadow-[0_0_20px_rgba(244,63,94,0.4)]"
