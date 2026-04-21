@@ -356,7 +356,7 @@ function StatusBadge({
 
 function SettingsTabLoadingOverlay({ label }: { label: string }) {
   return (
-    <div className="absolute -inset-px z-50 overflow-hidden pointer-events-auto">
+    <div className="absolute inset-0 z-50 overflow-hidden pointer-events-auto">
       <div className="absolute inset-0 bg-[var(--bg-surface)]/96 backdrop-blur-[20px]" />
       <div className="absolute inset-0 bg-[var(--bg-surface)]/72" />
       <div className="absolute inset-0 flex items-center justify-center">
@@ -371,10 +371,10 @@ function SettingsTabLoadingOverlay({ label }: { label: string }) {
 
 function ExchangeKeyRow({
   exchange,
-  onRevealStateChange,
+  onBusyStateChange,
 }: {
   exchange: "bybit";
-  onRevealStateChange?: (busy: boolean) => void;
+  onBusyStateChange?: (busy: boolean, label?: string) => void;
 }) {
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
@@ -394,9 +394,11 @@ function ExchangeKeyRow({
   const hasKeys = settings?.hasBybitKeys;
 
   useEffect(() => {
-    onRevealStateChange?.(revealing);
-    return () => onRevealStateChange?.(false);
-  }, [revealing, onRevealStateChange]);
+    const busy = revealing || saving;
+    const label = saving ? "Validating exchange keys..." : "Loading saved keys...";
+    onBusyStateChange?.(busy, busy ? label : undefined);
+    return () => onBusyStateChange?.(false);
+  }, [revealing, saving, onBusyStateChange]);
 
   const handleSave = async () => {
     if (!apiKey || !apiSecret) return;
@@ -566,8 +568,16 @@ function APIKeysTab({
   const [showOpenAIKey, setShowOpenAIKey] = useState(false);
   const [revealingOpenAIKey, setRevealingOpenAIKey] = useState(false);
   const openAIPrefetchedRef = useRef(false);
-  const [revealingBybitKeys, setRevealingBybitKeys] = useState(false);
+  const [bybitBusy, setBybitBusy] = useState(false);
+  const [bybitBusyLabel, setBybitBusyLabel] = useState("Loading saved keys...");
   const [switchingExchange, setSwitchingExchange] = useState(false);
+
+  const handleBybitBusyStateChange = useCallback((busy: boolean, label?: string) => {
+    setBybitBusy(busy);
+    if (label) {
+      setBybitBusyLabel(label);
+    }
+  }, []);
 
   const refreshRuntimeState = async () => {
     const [portfolio, positions, closedPnl] = await Promise.all([
@@ -656,10 +666,17 @@ function APIKeysTab({
   };
 
   useEffect(() => {
-    const isBusy = revealingOpenAIKey || revealingBybitKeys;
-    onLoadingStateChange?.(isBusy, "Loading saved keys...");
+    const isBusy = revealingOpenAIKey || bybitBusy || switchingExchange || savingOpenAI;
+    const label = savingOpenAI
+      ? "Validating OpenAI key..."
+      : switchingExchange
+        ? "Switching execution venue..."
+        : bybitBusy
+          ? bybitBusyLabel
+          : "Loading saved keys...";
+    onLoadingStateChange?.(isBusy, label);
     return () => onLoadingStateChange?.(false);
-  }, [revealingOpenAIKey, revealingBybitKeys, onLoadingStateChange]);
+  }, [revealingOpenAIKey, bybitBusy, bybitBusyLabel, switchingExchange, savingOpenAI, onLoadingStateChange]);
 
   return (
     <div className="space-y-6">
@@ -782,7 +799,7 @@ function APIKeysTab({
         <div className="mt-3">
           <ExchangeKeyRow
             exchange="bybit"
-            onRevealStateChange={setRevealingBybitKeys}
+            onBusyStateChange={handleBybitBusyStateChange}
           />
         </div>
       </div>
@@ -1016,7 +1033,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
 
         {/* Right Content */}
-        <div className={`relative flex-1 p-6 bg-transparent ${contentLoading ? "overflow-hidden" : "overflow-y-auto"}`}>
+        <div className="relative flex-1 min-h-0 bg-transparent overflow-hidden">
+          <div className={`h-full p-6 ${contentLoading ? "overflow-hidden" : "overflow-y-auto"}`}>
           {activeTab === "general" && (
             <div className="space-y-6">
               <div className="border-b border-[var(--border)] pb-2">
@@ -1791,6 +1809,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </div>
           )}
 
+          </div>
           {activeOverlayLabel && <SettingsTabLoadingOverlay label={activeOverlayLabel} />}
         </div>
       </div>
