@@ -72,6 +72,16 @@ export function AgentControlPanel() {
     }
     return "Listening to market data and running the AI decision loop.";
   })();
+  const statusDotState =
+    normalizedError
+      ? "error"
+      : toggling
+        ? "busy"
+        : !isRunning
+          ? "idle"
+          : agentStatus.frozen
+            ? "frozen"
+            : "running";
 
   return (
     <div className="flex flex-col items-center justify-center py-10 pb-20 w-full mx-4 min-h-full relative">
@@ -191,10 +201,10 @@ export function AgentControlPanel() {
         >
           {statusTitle}
         </p>
-        <div className="mt-1 flex items-center justify-center gap-1">
-          <span className="inline-block w-1 h-1 rounded-full bg-[var(--text-tertiary)] animate-pulse" />
-          <span className="inline-block w-1 h-1 rounded-full bg-[var(--text-tertiary)] animate-pulse" style={{ animationDelay: "0.2s" }} />
-          <span className="inline-block w-1 h-1 rounded-full bg-[var(--text-tertiary)] animate-pulse" style={{ animationDelay: "0.4s" }} />
+        <div className={`mt-1 flex items-center justify-center gap-1 agent-status-dots agent-status-dots--${statusDotState}`}>
+          <span className="agent-status-dot" />
+          <span className="agent-status-dot" style={{ animationDelay: "0.15s" }} />
+          <span className="agent-status-dot" style={{ animationDelay: "0.3s" }} />
         </div>
         <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">{statusDetail}</p>
       </div>

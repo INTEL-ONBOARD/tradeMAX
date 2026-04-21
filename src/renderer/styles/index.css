@@ -661,3 +661,45 @@ body {
 .hero-wave-3 {
   animation: wave-drift 22s ease-in-out infinite reverse;
 }
+
+/* ─── Agent Status Dots ───────────────────────────────────── */
+
+@keyframes agent-status-dot-wave {
+  0%, 60%, 100% {
+    transform: translateY(0) scale(0.9);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-3px) scale(1.15);
+    opacity: 1;
+  }
+}
+
+.agent-status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: agent-status-dot-wave 1.15s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.agent-status-dots {
+  color: var(--text-tertiary);
+}
+
+.agent-status-dots--busy {
+  color: var(--color-warn);
+}
+
+.agent-status-dots--running {
+  color: var(--color-profit);
+}
+
+.agent-status-dots--frozen {
+  color: var(--color-loss);
+}
+
+.agent-status-dots--error {
+  color: var(--color-loss);
+}
